@@ -1,0 +1,33 @@
+# ========== 依赖 ==========
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ========== 配置与凭据（切勿提交） ==========
+config.json
+.env
+*.local
+
+# ========== 运行时生成的数据 ==========
+uploaded-records.json
+reupload-records.json
+monitor-snapshots.json
+reconcile-verified.json
+
+# ========== 归档文件（下载/上传的报文，体积大且含业务数据） ==========
+data/
+archives/
+
+# ========== 日志 ==========
+*.log
+
+# ========== 系统/编辑器 ==========
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ========== 本地记忆 / 工作区元数据（可能含敏感信息） ==========
+.workbuddy/

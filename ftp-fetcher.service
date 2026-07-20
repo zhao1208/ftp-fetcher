@@ -1,0 +1,32 @@
+# FTP/SFTP 定时抓取工具 —— systemd 服务单元示例
+# 用法：
+#   1) 将本文件放到 /etc/systemd/system/ftp-fetcher.service
+#   2) 修改 WorkingDirectory 与 User 为实际部署路径/用户
+#   3) 如需通过环境变量注入配置，在 [Service] 下加 Environment= 行，例如：
+#        Environment=PORT=3721
+#        Environment=ORACLE_HOST=your-oracle-host
+#        Environment=ORACLE_USER=your-oracle-user
+#        Environment=ORACLE_PASS=******
+#        Environment=ORACLE_SERVICE=your-oracle-service
+#        Environment=LOCAL_DIR=/opt/ftp-fetcher/data
+#   4) sudo systemctl daemon-reload
+#      sudo systemctl enable --now ftp-fetcher
+#      sudo journalctl -u ftp-fetcher -f
+
+[Unit]
+Description=FTP/SFTP 定时抓取工具
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ftp-fetcher
+ExecStart=/usr/bin/node /opt/ftp-fetcher/server.js
+Restart=always
+RestartSec=5
+User=ftpuser
+# 如需环境变量配置，取消下面注释并填写
+# Environment=PORT=3721
+# Environment=LOCAL_DIR=/opt/ftp-fetcher/data
+
+[Install]
+WantedBy=multi-user.target

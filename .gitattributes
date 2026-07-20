@@ -1,0 +1,15 @@
+# 跨平台换行符规范
+# 源文件统一以 LF 存储/检出，避免 Linux 下 .sh 脚本因 CRLF 失效
+* text=auto eol=lf
+
+# Windows 批处理保留 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 明确按文本处理
+*.js text
+*.json text
+*.md text
+*.html text
+*.sh text eol=lf
+*.service text

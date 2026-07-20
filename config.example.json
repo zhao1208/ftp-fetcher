@@ -1,0 +1,31 @@
+{
+  "ftp": {
+    "protocol": "sftp",
+    "host": "",
+    "port": 22,
+    "user": "",
+    "password": "",
+    "secure": false,
+    "privateKey": "",
+    "passphrase": ""
+  },
+  "folders": [
+    { "remotePath": "/FreightConfirm", "filePattern": "*", "enabled": true },
+    { "remotePath": "/TelexRelease", "filePattern": "*", "enabled": true }
+  ],
+  "uploadFolders": [],
+  "uploadEnabled": false,
+  "uploadSchedule": { "type": "interval", "interval": 10, "cronExpr": "*/10 * * * *" },
+  "schedule": { "type": "interval", "interval": 10, "cronExpr": "*/10 * * * *" },
+  "localDir": "",
+  "useDateFolder": true,
+  "dateFolderFormat": "YYYY-MM-DD",
+  "deleteAfterDownload": false,
+  "overwrite": true,
+  "mail": { "host": "", "port": 465, "secure": true, "user": "", "password": "", "to": "" },
+  "monitors": [],
+  "monitorEnabled": false,
+  "monitorInterval": 5,
+  "oracle": { "host": "", "port": 1521, "serviceName": "", "user": "", "password": "", "enabled": false },
+  "reconcile": { "enabled": false, "interval": 30, "windowDays": 7, "autoReupload": false }
+}

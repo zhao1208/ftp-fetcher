@@ -1,0 +1,454 @@
+# CMA 文件自动收发工具（FTP/SFTP 定时抓取 · 对账自动重传）
+
+一个基于 Node.js 的 FTP/SFTP 文件定时抓取与上传工具，支持双向传输、按日期归档、断线重连、文件去重、文件监控邮件通知，以及「归档报文与 Oracle 数据库对账 + 自动重传」。
+
+**跨平台**：同一份代码可在 Windows 与 Linux 上运行。Windows 用 `start.bat` / `deploy.bat`，Linux 用 `start.sh` 或 systemd / pm2。
+
+> 本文档合并了原《业务需求说明书》《操作说明》《归档报文对账 + 自动重传 设计与任务清单》三份资料，一份说清：能做什么、怎么用、怎么部署、对账逻辑怎么定。
+
+---
+
+## 目录
+
+1. [项目简介与功能](#1-项目简介与功能)
+2. [业务背景与目标](#2-业务背景与目标)
+3. [环境要求](#3-环境要求)
+4. [快速开始（Linux）](#4-快速开始linux)
+5. [快速开始（Windows）](#5-快速开始windows)
+6. [生产部署（后台常驻）](#6-生产部署后台常驻)
+7. [通过环境变量配置（无需编辑文件）](#7-通过环境变量配置无需编辑文件)
+8. [界面与功能操作](#8-界面与功能操作)
+9. [归档报文对账 + 自动重传](#9-归档报文对账--自动重传)
+10. [目录结构](#10-目录结构)
+11. [防火墙 / 端口](#11-防火墙--端口)
+12. [升级 / 重新部署](#12-升级--重新部署)
+13. [常见问题（FAQ）](#13-常见问题faq)
+14. [验收标准](#14-验收标准)
+
+---
+
+## 1. 项目简介与功能
+
+本工具用于自动化 FTP/SFTP 文件传输，主要解决船货代业务中「与船公司（如 CMA）之间频繁传递业务文件」的痛点。过去这些文件需人工登录服务器手动收发，容易漏收漏传、难以追溯。工具把「收取远程文件」和「回传本地文件」自动化，业务人员只需查看结果。
+
+| 功能 | 说明 |
+|---|---|
+| **定时下载** | 从远程 FTP/SFTP 拉取文件到本地，支持多文件夹、文件匹配模式、按日期归档 |
+| **定时上传** | 将本地文件推送到远程 FTP/SFTP，支持按日期扫描多天文件、防重复上传 |
+| **秒级轮询** | 支持最短秒级间隔，适合高频抓取场景（避免文件被别人先取走） |
+| **断线重连** | SFTP 连接断开自动重连，无需人工干预 |
+| **远程 / 本地浏览** | 内置 FTP 浏览器与本地目录选择器，可视化选取路径 |
+| **运行日志** | 完整记录每次下载/上传的详细信息 |
+| **归档报文对账 + 自动重传** | 扫描已归档报文 → 查 Oracle 比对状态 → 不一致则自动重传到原目录 |
+| **文件监控 + 邮件通知** | 监控远程目录变化并通过邮件告警（可选） |
+
+目标用户：
+
+| 角色 | 说明 | 主要操作 |
+|---|---|---|
+| 业务操作员 | 日常使用工具收发文件 | 查看文件、查看日志、手动触发一次收发 |
+| 系统配置员 | 负责配置服务器连接与任务 | 填写连接信息、设置文件夹、设置频率 |
+| 主管 / 审核 | 关注运行是否正常 | 查看状态、查看日志 |
+
+总体能力概括：**自动收、自动发、自动归档、可监控、可对账**。
+
+---
+
+## 2. 业务背景与目标
+
+日常需与船公司频繁传递的业务文件包括：**运费确认单（Freight Confirm）**、**电放提单（Telex Release）**、其他业务报文 / 放货相关文件。
+
+人工方式痛点：
+
+- 文件更新频繁，人工容易**漏收、漏传**；
+- 高峰时段文件很快被取走，人工来不及处理；
+- 文件散落各处，**难以按日期追溯和对账**；
+- 重复操作占用大量人力，效率低。
+
+**目标**：把「收取远程文件」和「回传本地文件」两件事自动化，电脑按设定频率自动完成，业务人员只需要在需要时查看结果即可。
+
+---
+
+## 3. 环境要求
+
+- **Node.js** >= 16.x（推荐 18.x / 20.x LTS）
+- 网络可访问目标 FTP/SFTP 服务器（及可选的 Oracle 数据库）
+- 无需 Oracle Instant Client：`oracledb` 使用纯 JS 的 Thin 模式
+- 硬盘空间用于本地归档（按日期分目录）
+
+---
+
+## 4. 快速开始（Linux）
+
+```bash
+# 1) 获取代码
+git clone <your-repo-url> ftp-fetcher
+cd ftp-fetcher
+
+# 2) 安装依赖
+npm install --registry=https://registry.npmmirror.com
+
+# 3) 准备配置（二选一）
+#   方式 A：复制模板后手动编辑（凭据写在本地，不会被提交）
+cp config.example.json config.json
+nano config.json
+#   方式 B：用环境变量注入（适合容器 / 无头服务器，见第 7 节）
+
+# 4) 启动
+./start.sh            # 前台运行，崩溃自动重启
+# 或
+node server.js
+```
+
+启动后访问：**http://\<服务器IP\>:3721**（端口可用 `PORT` 环境变量修改）
+
+> ⚠️ `config.json` 已在 `.gitignore` 中忽略，**切勿将含密码的 config.json 提交到仓库**。源码 `server.js` 的默认配置不含任何凭据。
+
+---
+
+## 5. 快速开始（Windows）
+
+```bash
+cd ftp-fetcher
+npm install
+node server.js
+# 或使用启动脚本（崩溃自动重启）
+start.bat
+```
+
+启动后访问：**http://localhost:3721**
+
+> 配置文件 `config.json` 中包含 FTP 密码，部署后请检查配置是否正确。
+> 复制整个 `ftp-fetcher` 文件夹到其它电脑，在该电脑执行 `npm install` 即可运行。
+
+---
+
+## 6. 生产部署（后台常驻）
+
+### 方式一：systemd（推荐服务器）
+
+复制并编辑示例单元：
+
+```bash
+sudo cp ftp-fetcher.service /etc/systemd/system/ftp-fetcher.service
+sudo nano /etc/systemd/system/ftp-fetcher.service   # 改 WorkingDirectory / User / Environment
+sudo systemctl daemon-reload
+sudo systemctl enable --now ftp-fetcher
+sudo journalctl -u ftp-fetcher -f
+```
+
+示例单元中已给出通过 `Environment=` 注入数据库配置的方法（凭据用占位符，部署时填写）。
+
+### 方式二：pm2
+
+```bash
+npm install -g pm2
+pm2 start server.js --name ftp-fetcher
+pm2 save
+pm2 startup   # 开机自启
+```
+
+---
+
+## 7. 通过环境变量配置（无需编辑文件）
+
+无头 / 容器场景下，可用环境变量覆盖配置，优先级：**环境变量 > config.json > 默认值**。
+首次启动时若 `config.json` 不存在，程序会用当前（默认 + 环境变量）配置自动生成一份。
+
+| 变量 | 作用 |
+|---|---|
+| `PORT` | 监听端口（默认 3721） |
+| `FTP_PROTOCOL` | `sftp` 或 `ftp` |
+| `FTP_HOST` / `FTP_PORT` / `FTP_USER` / `FTP_PASS` | FTP/SFTP 连接信息 |
+| `FTP_SECURE` | `true/false`（仅 FTP/FTPS 时有效） |
+| `FTP_PRIVATE_KEY` / `FTP_PASSPHRASE` | SFTP 密钥登录（可选） |
+| `LOCAL_DIR` | 本地归档根目录（**Linux 上务必设为有效路径，不要写 Windows 盘符**） |
+| `ORACLE_HOST` / `ORACLE_PORT` / `ORACLE_SERVICE` | Oracle 连接（如 `your-oracle-host` / `1521` / `your-oracle-service`） |
+| `ORACLE_USER` / `ORACLE_PASS` | Oracle 账号密码 |
+| `ORACLE_ENABLED` | `true/false` 是否启用对账 |
+| `RECONCILE_ENABLED` | `true/false` 是否启用定时对账重传 |
+| `RECONCILE_INTERVAL` | 对账间隔（分钟） |
+| `RECONCILE_WINDOW_DAYS` | 扫描最近 N 天的归档 |
+
+示例：
+
+```bash
+PORT=3721 \
+LOCAL_DIR=/opt/ftp-fetcher/data \
+ORACLE_HOST=your-oracle-host ORACLE_SERVICE=your-oracle-service \
+ORACLE_USER=your_oracle_user ORACLE_PASS='*****' ORACLE_ENABLED=true \
+RECONCILE_ENABLED=true RECONCILE_INTERVAL=240 RECONCILE_WINDOW_DAYS=3 \
+node server.js
+```
+
+---
+
+## 8. 界面与功能操作
+
+页面分为三个区域：
+
+- **顶部状态栏** — 显示服务状态、上次运行时间、运行次数、日志条数
+- **顶部操作按钮** — 启动/停止、立即抓取、保存配置、立即上传
+- **功能 Tab** — 六个标签页：
+
+| Tab | 用途 |
+|---|---|
+| 🔌 连接配置 | 配置 FTP/SFTP 连接信息，测试连接，浏览远程目录 |
+| 📂 下载文件夹 | 管理需要从远程拉取文件的文件夹列表 |
+| ⬆ 上传配置 | 管理本地文件上传到远程的任务（含 Oracle 对账配置） |
+| ⏱ 调度 & 归档 | 设置定时频率、本地保存路径、日期归档格式 |
+| 🗂 归档目录 | 查看本地已下载文件的目录结构 |
+| 📋 运行日志 | 查看所有操作的详细日志 |
+
+### 8.1 连接配置
+
+- 点击 **SFTP** 或 **FTP/FTPS** 切换协议，端口自动变更（SFTP=22，FTP=21）。使用 FTP 可勾选「启用 FTPS (TLS)」。
+- 填写字段：
+
+| 字段 | 说明 |
+|---|---|
+| 主机地址 | FTP/SFTP 服务器的 IP 或域名 |
+| 端口 | 默认 SFTP:22，FTP:21 |
+| 用户名 | 登录用户名 |
+| 密码 | 登录密码 |
+| 私钥文件路径（SFTP） | 可选，使用密钥登录时填写私钥文件的绝对路径 |
+
+- 点击「🔍 测试连接」验证连通性，成功会在日志中显示根目录条目数。
+- 点击「🌐 浏览远程目录」在右侧面板查看远程服务器目录树，双击进入子目录。
+
+### 8.2 下载文件夹管理
+
+配置要从远程拉取哪些文件夹：
+
+1. 点击「＋ 添加文件夹」
+2. 填写：
+
+| 字段 | 说明 | 示例 |
+|---|---|---|
+| 远程文件夹路径 | 服务器上要抓取的目录 | `/FreightConfirm`、`/TelexRelease` |
+| 文件匹配模式 | 通配符过滤，留空匹配所有 | `*`、`*.xml`、`Report_*.csv` |
+
+3. 点击「✓ 确认添加」
+
+- ✅ 勾选/取消勾选：启用或禁用某个文件夹；✕ 按钮：删除配置；保存配置后生效。
+- 下载后的文件按以下结构保存（取决于归档配置）：
+
+```
+本地根目录/
+  └── 2026-06-04/          ← 日期目录
+      ├── FreightConfirm/   ← 远程文件夹名
+      │   ├── file1.xml
+      │   └── file2.xml
+      ├── TelexRelease/
+      │   └── file1.xml
+      └── SwitchBL/
+          └── file1.xml
+```
+
+### 8.3 上传配置
+
+将本地文件定时自动上传到远程 FTP/SFTP。
+
+- 在「上传配置」Tab 顶部，勾选「启用定时上传」。
+- 上传调度方式：
+
+| 方式 | 说明 |
+|---|---|
+| 与下载任务同步执行（推荐） | 每次下载任务完成后自动触发上传 |
+| 独立固定间隔 | 按独立的时间间隔执行，支持秒级（如每 30 秒） |
+| 独立 Cron 表达式 | 按 Cron 表达式独立调度 |
+
+- 添加上传文件夹，填写：
+
+| 字段 | 说明 | 示例 |
+|---|---|---|
+| 本地文件夹路径 | 要上传的本地文件所在目录 | `D:\dalian\{date}\FreightConfirm` |
+| 远程目标路径 | 上传到服务器的哪个目录 | `/FreightConfirm` |
+| 文件匹配模式 | 通配符过滤 | `*`（所有文件）、`*.xml` |
+| 上传后删除本地 | 勾选后上传成功则删除本地文件 | — |
+| 跳过已上传的文件 | 勾选后跳过已记录文件，避免重复上传 | — |
+
+- **按日期批量扫描（核心特性）**：勾选后拖动滑块选择天数（1-30 天），路径中使用 `{date}` 占位符，工具自动替换为最近 N 天的日期（格式 `YYYY-MM-DD`）。
+  例如 `D:\dalian\{date}\FreightConfirm`，扫描 3 天会检查 `D:\dalian\2026-06-04\FreightConfirm\`、`...\2026-06-03\...`、`...\2026-06-02\...`。
+- **防重复上传**：勾选「跳过已上传的文件」后，工具按 路径+大小+修改时间 三重校验，已记录文件自动跳过；底部「上传记录统计」可查看数量，点击「清空上传记录」可强制重新上传所有文件。
+- 点击顶部「⬆ 立即上传」按钮可手动触发一次上传。
+
+### 8.4 调度与归档
+
+- **下载调度**：支持「固定间隔」（每隔 N 秒/分钟）或「Cron 表达式」。秒级轮询适合文件更新频率高的场景。
+  常用 Cron：`*/15 * * * *`（每 15 分钟）、`0 * * * *`（每小时整点）、`0 8,20 * * *`（每天 8 点和 20 点）、`0 9 * * 1-5`（工作日 9 点）。
+- **本地目录配置**：「文件保存根目录」为所有下载文件的根路径，如 `D:\dalian` / `/opt/ftp-fetcher/data`。
+- **日期归档**：「启用日期子目录」按日期分目录存储（推荐）；日期目录格式支持 `YYYY-MM-DD` / `YYYYMMDD` / `YYYY/MM/DD`。
+- **其它选项**：覆盖已存在文件、下载后删除远程文件（谨慎使用）。
+
+### 8.5 归档目录查看
+
+点击「🔄 刷新」查看本地目录的归档结构，按 日期 → 远程文件夹名 → 文件数 三级展示。
+
+### 8.6 运行日志
+
+实时显示所有操作记录：
+
+- **info**（蓝色）：正常操作信息
+- **success**（绿色）：成功完成的操作
+- **warn**（橙色）：警告信息（如连接断开、目录不存在）
+- **error**（红色）：错误信息
+
+日志最新显示在顶部，最多保留 1000 条，支持「刷新」和「清空」；所有日志同步输出到 `server.js` 控制台。
+
+### 8.7 顶部控制栏
+
+| 按钮 | 功能 |
+|---|---|
+| ▶ 启动 | 开始定时调度 |
+| ⏹ 停止 | 停止定时调度 |
+| ⚡ 立即抓取 | 立即执行一次下载（不等待定时） |
+| ⬆ 立即上传 | 立即执行一次上传 |
+| 💾 保存配置 | 保存所有配置到 config.json |
+
+状态卡片实时显示：运行状态（绿色圆点=运行中，灰色=已停止）、上次运行时间、运行次数、日志条数。
+
+---
+
+## 9. 归档报文对账 + 自动重传
+
+> 目标：扫描已归档报文 → 查 Oracle 比对状态 → 不一致则自动重新上传到原目录，并留存重传记录。
+
+### 9.1 需求与判定规则
+
+报文按目录区分状态含义，解析字段与数据库字段比对：
+
+| 目录 | 报文状态含义 | 解析字段 | DB 字段 | 一致条件 | 不一致→动作 |
+|---|---|---|---|---|---|
+| TelexRelease | 换单方式 | 第5段（空=电放） | SIGN_BL_TYPE（21=电放，6=SWB） | 归一化后相等 | 重传 |
+| FreightConfirm | 是否放单（查到即可放） | 无（隐含已放单） | SIGN_BL_INFO（0=不可放，1=可放） | DB **查到记录（存在）** | 重传 |
+
+**重传规则**：目标目录为本地子目录同名远程目录（`FreightConfirm`→`/FreightConfirm`，`TelexRelease`→`/TelexRelease`），文件名保持原样；触发为定时自动重传（在原上传配置界面增加开关 + 间隔），并留存重传记录。
+
+### 9.2 Oracle 查询（按文件内容参数化）
+
+```sql
+SELECT csm.SIGN_BL_INFO,   -- 是否放单  0:不可放 1:可放
+       csm.SIGN_BL_TYPE    -- 换单方式  21:电放  6:SWB
+FROM CA_SI_MANIFEST csm
+LEFT JOIN CA_BM_SAILING_SCHEDULE cbss ON csm.VOYAGE_ID = cbss.VOYAGE_ID
+LEFT JOIN CA_BM_SHIP_CANONICAL cbsc ON cbss.SHIP_ID = cbsc.SHIP_ID
+WHERE csm.BL_NO        = :bl    -- 提单号（报文第3段）
+  AND cbsc.SHIP_EN_NAME = :ship  -- 船名（报文第1段）
+  AND cbss.IMP_VOYAGE_CODE = :voyage -- 航次（报文第2段）
+```
+
+> 连接数据库所需的 主机 / 服务名 / 账号 / 密码 通过 `config.json` 的 `oracle` 段或 `ORACLE_*` 环境变量注入，**不写入代码仓库**。
+
+### 9.3 报文格式与状态归一化（磁盘实测）
+
+- `TelexRelease/` 下：`船名;航次;提单号;时间戳;换单方式` —— 5 段，第5段空=电放，可填 `SWB`
+  - 例：`TERATAKI;0XKOLN;ASC0520640;2026-06-08 09:31:19;`（空=电放）
+  - 例：`TERATAKI;0XKOLN;ASC0515879A;2026-06-08 10:42:14;SWB`
+- `FreightConfirm/` 下：`船名;航次;提单号;时间戳` —— 4 段，无换单方式字段，隐含"已放单"
+  - 例：`TERATAKI;0XKOLN;ASC0518051D;2026-06-03 11:52:44`
+
+**状态归一化映射**：
+
+- 报文换单方式 → 电放：`空 / "电放" / "2" / "21"`；→ SWB：`"SWB" / "6"`
+- DB SIGN_BL_TYPE → 电放：`2` 或 `21`（实测库里是 **2**，原"21"为笔误）；→ SWB：`6`（其它值按原值比较）
+- ⚠️ 库里 SIGN_BL_TYPE 实测取值有 0/1/2/5/6/7/A/null，SIGN_BL_INFO 有 0/1/null。目前仅 2=电放、6=SWB 做归一化，其余按原值比较。
+
+### 9.4 技术方案
+
+1. **Oracle 驱动**：`oracledb` v6+ **Thin 模式**（无需 Oracle Instant Client，纯 TCP 直连）。
+2. **配置接入**：`config.json` 增加 `oracle:{host,port,serviceName,user,password,enabled}`；前端「上传配置」Tab 增加连接配置块 + 「启用对账自动重传」开关 + 间隔(分钟)。
+3. **解析器**：`parseManifestFile(fullPath, subDir)` → `{ship, voyage, bl, timestamp, releaseType?}`（按 `;` 切分，去空格，兼容 Windows CRLF 行尾）。
+4. **查询助手（批量）**：`queryManifestBatch(conn, records)` → 一次 DB 往返查出一个文件内所有提单号，降低查询量。
+5. **对账引擎 + 增量缓存**：`runReconcile()` 遍历 `localDir/{近N天}/{FreightConfirm,TelexRelease}/*.txt`；用 `reconcile-verified.json` 记录「已验证一致文件」的签名（`size|mtimeMs`），签名命中则整文件跳过（计 `skipped`）；仅对未命中文件逐行解析 → 批量查 DB → 按规则比对 → 收集 `mismatches[]`；全部一致的整文件记入缓存（下次跳过），不一致文件不入缓存（每轮重验）；自管理 `reconcileRunning` 标志（防重入），手动「立即对账」随时可触发。
+6. **重传执行**：`reuploadMismatch(item)` 复用现有 `sftp.fastPut`，目标远程目录由子目录映射；写入 `reupload-records.json`（文件名、本地路径、远程路径、报文状态、DB状态、重传时间、结果）。
+7. **调度**：开关开启后周期跑 `runReconcile` 并自动重传 mismatches；保留「立即对账」按钮与「清空已验证缓存」按钮（清空后下次全量重对）。
+8. **UI**：上传配置 Tab 内增加「Oracle 连接」「对账自动重传」区块 + 「立即对账」按钮 + 「清空已验证缓存」按钮 + 「对账结果 / 重传记录」表格（报文 / 本地状态 / 数据库状态 / 是否一致 / 操作[重传]）。
+
+范围边界（不堆料）：仅支持 Oracle；不做比对结果导出 Excel；不修改现有下载/手动上传逻辑，仅新增对账+重传链路；邮件告警复用已有监控模块，列为可选。
+
+---
+
+## 10. 目录结构
+
+```
+ftp-fetcher/
+├── server.js              # 后端（Express + 调度 + 各功能模块）
+├── public/index.html      # 前端单页（配置界面）
+├── package.json
+├── config.example.json    # 配置模板（复制为 config.json 使用）
+├── .gitignore             # 已忽略 config.json / node_modules / 运行时数据 / .workbuddy
+├── .gitattributes         # start.sh 强制 LF 换行，避免 Linux 执行报错
+├── start.sh               # Linux 启动脚本（崩溃重启）
+├── start.bat / deploy.bat # Windows 启动脚本
+├── ftp-fetcher.service    # systemd 单元示例
+└── README.md              # 本文档
+```
+
+---
+
+## 11. 防火墙 / 端口
+
+- 服务监听 `0.0.0.0:PORT`（所有网卡）。
+- 若服务器有防火墙，放行 `PORT`（默认 3721）。
+- 仅本机访问可改为 `127.0.0.1:PORT`，并配合反向代理（Nginx）加认证。
+
+---
+
+## 12. 升级 / 重新部署
+
+```bash
+git pull
+npm install --registry=https://registry.npmmirror.com
+# 重启服务（systemd: sudo systemctl restart ftp-fetcher / pm2 restart ftp-fetcher）
+```
+
+---
+
+## 13. 常见问题（FAQ）
+
+**Q: 连接测试失败，提示 "No SFTP connection available"**
+- 检查主机地址、端口、用户名、密码是否正确；确认目标服务器允许外部连接；检查防火墙是否放行对应端口。
+
+**Q: 下载文件后本地找不到**
+- 检查「文件保存根目录」配置是否正确；确认「启用日期子目录」是否开启，文件可能在日期子目录下；查看「归档目录」Tab 确认实际存储路径。
+
+**Q: 远程目录文件列表为空**
+- 可能是文件已被其他服务抢先下载；日志会提示「目录 X 秒前刚被修改过但当前无文件」；尝试提高轮询频率（改为秒级）。
+
+**Q: 上传时提示「请求失败: Failed to fetch」**
+- 确认 FTP 服务正在运行（`node server.js`）；按 Ctrl+F5 强制刷新浏览器清除旧缓存；检查防火墙是否拦截本地 3721 端口。
+
+**Q: 如何重新上传已上传过的文件？**
+- 在「上传配置」Tab 点击「清空上传记录」。
+
+**Q: 如何修改监听端口？**
+- 通过 `PORT` 环境变量（推荐），或编辑 `server.js` 底部 `app.listen` 的端口号。
+
+**Q: 配置文件在哪里？**
+- `config.json`：FTP/ Oracle 连接、文件夹、调度、归档等所有配置。
+- `uploaded-records.json`：上传去重记录（自动维护）。
+- `reupload-records.json`：对账重传记录。
+- `reconcile-verified.json`：对账增量缓存（已验证一致的文件签名）。
+
+**Q: 如何批量导入多个日期的文件？**
+- 使用「上传配置」中的「按日期批量扫描」功能，路径中使用 `{date}` 占位符，设置扫描天数，工具自动遍历最近 N 天的目录。
+
+**Q: 对账报「不一致」但我不想自动重传？**
+- 在「上传配置」Tab 关闭「启用定时对账 + 检出不一致自动重传」，仅保留「立即对账」手动触发与查看。
+
+---
+
+## 14. 验收标准
+
+- [ ] 能正确连接到船公司服务器并完成一次测试连接；
+- [ ] 配置好文件夹后，工具能自动把文件收到本地并按日期归类；
+- [ ] 启用了上传后，本地文件能按设定自动回传；
+- [ ] 定时任务能按设定频率稳定执行，断线能自动恢复；
+- [ ] 状态栏与日志能真实反映运行情况；
+- [ ] 业务人员无需技术背景即可完成日常查看与手动触发；
+- [ ] （对账功能）Oracle 连接可配置并测试；TelexRelease 换单方式与 DB 不一致、FreightConfirm 在 DB 查不到时，能被检出并可触发重传；重传记录留存且不重复重传。
+
+---
+
+*本工具为跨平台重写版本，已适配 Linux 部署，并将原业务需求、操作说明、对账设计合并于本 README。*

@@ -1,0 +1,1987 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FTP 定时抓取工具</title>
+  <style>
+    :root {
+      --bg: #f2f6f9;
+      --card: #ffffff;
+      --card2: #f8fafc;
+      --border: #e2e8f0;
+      --accent: #0891b2;
+      --accent-hover: #0e7490;
+      --accent-light: #e0f7fa;
+      --success: #059669;
+      --success-light: #d1fae5;
+      --warn: #d97706;
+      --warn-light: #fef3c7;
+      --error: #dc2626;
+      --error-light: #fee2e2;
+      --text: #1e293b;
+      --text2: #64748b;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter','Segoe UI','PingFang SC',sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5; }
+    .app { max-width: 1160px; margin: 0 auto; padding: 24px 20px 60px; }
+
+    /* Header */
+    .header { display: flex; align-items: center; gap: 16px; padding: 20px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .header-icon { font-size: 32px; width: 48px; height: 48px; background: var(--accent-light); border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .header h1 { font-size: 22px; font-weight: 700; color: #0f172a; }
+    .header p { color: var(--text2); font-size: 13px; margin-top: 4px; }
+
+    /* Status bar */
+    .status-bar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .status-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 20px; flex: 1; min-width: 145px; box-shadow: var(--shadow); transition: box-shadow .2s; }
+    .status-card:hover { box-shadow: var(--shadow-md); }
+    .status-card .label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; font-weight: 600; }
+    .status-card .value { font-size: 14px; font-weight: 600; color: var(--text); }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .badge.running  { background: var(--success-light); color: var(--success); }
+    .badge.stopped  { background: #f1f5f9; color: var(--text2); }
+    .badge.success  { background: var(--success-light); color: var(--success); }
+    .badge.warn     { background: var(--warn-light); color: var(--warn); }
+    .badge.error    { background: var(--error-light); color: var(--error); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .dot.pulse { animation: pulse 1.4s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--card); border-radius: var(--radius); padding: 4px; box-shadow: var(--shadow); }
+    .tab { padding: 9px 18px; font-size: 13px; cursor: pointer; color: var(--text2); border-radius: 10px; transition: all .2s; user-select: none; font-weight: 500; }
+    .tab.active { background: var(--accent); color: #fff; font-weight: 600; box-shadow: 0 2px 8px rgba(8,145,178,.35); }
+    .tab:hover:not(.active) { color: var(--text); background: var(--card2); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Layout */
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media(max-width:768px){ .layout { grid-template-columns: 1fr; } }
+    .full { grid-column: 1 / -1; }
+
+    /* Card */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; box-shadow: var(--shadow); }
+    .card-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+    /* Form */
+    .form-group { margin-bottom: 14px; }
+    .form-row { display: flex; gap: 12px; }
+    .form-row .form-group { flex: 1; }
+    label { display: block; font-size: 12px; color: var(--text); font-weight: 600; margin-bottom: 5px; }
+    input, select, textarea {
+      width: 100%; background: var(--card2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 9px 12px; color: var(--text); font-size: 13px;
+      outline: none; transition: all .2s; font-family: inherit;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(8,145,178,.1); background: #fff; }
+    input[type=checkbox] { width: auto; accent-color: var(--accent); cursor: pointer; }
+    .checkbox-row { display: flex; align-items: center; gap: 7px; font-size: 13px; cursor: pointer; user-select: none; color: var(--text); }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s; white-space: nowrap; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); box-shadow: 0 2px 8px rgba(8,145,178,.3); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover:not(:disabled) { filter: brightness(1.1); box-shadow: 0 2px 8px rgba(5,150,105,.3); }
+    .btn-danger  { background: var(--error); color: #fff; }
+    .btn-danger:hover:not(:disabled) { filter: brightness(1.1); }
+    .btn-ghost   { background: #fff; color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+    .btn-warn    { background: var(--warn); color: #fff; }
+    .btn-warn:hover:not(:disabled) { filter: brightness(1.1); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+    /* Main Action Bar */
+    .main-actions { display: flex; gap: 10px; margin-bottom: 22px; flex-wrap: wrap; align-items: center; }
+
+    /* Folder list */
+    .folder-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; min-height: 40px; }
+    .folder-item {
+      background: var(--card2); border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+      transition: box-shadow .2s;
+    }
+    .folder-item:hover { box-shadow: var(--shadow-md); }
+    .folder-item.disabled { opacity: .45; }
+    .folder-item .folder-path { flex: 1; font-size: 13px; font-weight: 600; color: var(--text); word-break: break-all; }
+    .folder-item .folder-pattern { font-size: 11px; color: var(--text2); margin-top: 2px; }
+    .folder-item .folder-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .folder-empty { color: var(--text2); font-size: 13px; text-align: center; padding: 24px 0; }
+
+    /* Path input with browse */
+    .path-wrap { display: flex; gap: 8px; }
+    .path-wrap input { flex: 1; }
+
+    /* FTP browser */
+    .ftp-browser { background: var(--card2); border: 1px solid var(--border); border-radius: 10px; margin-top: 8px; overflow: hidden; }
+    .ftp-browser-header { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text2); display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #fff; }
+    .ftp-breadcrumb { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    .ftp-list { max-height: 240px; overflow-y: auto; }
+    .ftp-item { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; transition: background .12s; }
+    .ftp-item:hover { background: #f0f9ff; }
+    .ftp-item .fi-icon { width: 20px; text-align: center; flex-shrink: 0; }
+    .ftp-item .fi-name { flex: 1; }
+    .ftp-item .fi-size { color: var(--text2); font-size: 11px; }
+    .ftp-item.dir .fi-name { color: var(--accent); font-weight: 600; }
+    .ftp-empty { color: var(--text2); text-align: center; padding: 28px; font-size: 13px; }
+    .ftp-loading { color: var(--text2); text-align: center; padding: 28px; font-size: 13px; }
+
+    /* Archive tree */
+    .archive-tree { display: flex; flex-direction: column; gap: 6px; }
+    .archive-date { background: var(--card2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: box-shadow .2s; }
+    .archive-date:hover { box-shadow: var(--shadow-md); }
+    .archive-date-header { display: flex; align-items: center; gap: 10px; padding: 11px 16px; cursor: pointer; user-select: none; font-size: 13px; font-weight: 600; }
+    .archive-date-header:hover { background: #f0f9ff; }
+    .archive-date-body { padding: 8px 16px 12px; border-top: 1px solid var(--border); display: none; background: #fff; }
+    .archive-date-body.open { display: block; }
+    .archive-subfolder { display: flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 13px; }
+    .archive-subfolder .asf-icon { color: var(--accent); }
+    .archive-subfolder .asf-count { background: var(--accent-light); color: var(--accent); padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+
+    /* Log */
+    .log-wrap { background: #1e293b; border: 1px solid #334155; border-radius: 10px; height: 380px; overflow-y: auto; padding: 14px; font-family: 'JetBrains Mono','Consolas','Courier New',monospace; font-size: 12px; line-height: 1.8; }
+    .log-entry { display: flex; gap: 10px; padding: 2px 0; }
+    .log-time  { color: #94a3b8; min-width: 148px; flex-shrink: 0; }
+    .log-level { min-width: 42px; font-weight: 700; flex-shrink: 0; }
+    .log-level.info  { color: #38bdf8; }
+    .log-level.warn  { color: #fbbf24; }
+    .log-level.error { color: #f87171; }
+    .log-msg { color: #e2e8f0; flex: 1; word-break: break-all; }
+    .log-empty { color: #94a3b8; text-align: center; padding: 60px 0; font-size: 13px; }
+    hr.sep { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+    .tip { font-size: 11px; color: var(--text2); margin-top: 4px; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.5); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.show { display: flex; }
+    .modal { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); width: 520px; max-width: 95vw; max-height: 82vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.18); }
+    .modal-header { padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 15px; }
+    .modal-close { border: none; background: none; color: var(--text2); font-size: 20px; cursor: pointer; padding: 0 4px; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
+    .modal-close:hover { color: var(--text); background: var(--card2); }
+    .modal-body { padding: 18px 22px; overflow-y: auto; flex: 1; }
+    .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+    .dir-item { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; transition: all .12s; }
+    .dir-item:hover { background: var(--accent-light); }
+    .dir-breadcrumb { padding: 9px 12px; font-size: 12px; color: var(--text2); border-bottom: 1px solid var(--border); margin-bottom: 8px; word-break: break-all; font-family: monospace; }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 28px; right: 28px; padding: 12px 20px; border-radius: 10px; font-size: 13px; box-shadow: 0 8px 32px rgba(0,0,0,.15); transform: translateY(80px); opacity: 0; transition: all .3s ease; z-index: 9999; max-width: 360px; font-weight: 500; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { background: var(--success-light); border: 1px solid #a7f3d0; color: var(--success); }
+    .toast.error   { background: var(--error-light); border: 1px solid #fecaca; color: var(--error); }
+    .toast.info    { background: var(--accent-light); border: 1px solid #99f6e4; color: var(--accent); }
+    .toast.warn    { background: var(--warn-light); border: 1px solid #fde68a; color: var(--warn); }
+
+    /* Add folder form */
+    .add-folder-form { background: var(--accent-light); border: 1px solid rgba(8,145,178,.25); border-radius: 10px; padding: 16px; margin-top: 10px; display: none; }
+    .add-folder-form.show { display: block; }
+
+    /* Protocol selector */
+    .proto-option { flex: 1; background: var(--card2); border: 2px solid var(--border); border-radius: 10px; padding: 10px 14px; cursor: pointer; transition: all .2s; }
+    .proto-option:hover { border-color: #99f6e4; }
+    .proto-option.active { border-color: var(--accent); background: var(--accent-light); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    /* Date picker chips */
+    .date-chip { font-size:12px;padding:4px 10px;border-radius:20px;border:1.5px solid var(--border);background:var(--card);cursor:pointer;transition:all .15s;font-weight:500;color:var(--text2);user-select:none }
+    .date-chip:hover { border-color:var(--accent);color:var(--accent) }
+    .date-chip.active { background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600 }
+    .date-tag { display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:3px 8px 3px 10px;border-radius:16px;background:var(--accent-light);color:var(--accent);font-weight:600;border:1px solid rgba(8,145,178,.25) }
+    .date-tag button { background:none;border:none;color:var(--accent);cursor:pointer;font-size:15px;line-height:1;padding:0 2px;margin-left:2px }
+    .date-tag button:hover { color:var(--error) }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-icon">📡</div>
+    <div>
+      <h1>FTP / SFTP 定时抓取工具</h1>
+      <p>可视化配置连接 · 多文件夹选择 · 按日期自动归档</p>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-card">
+      <div class="label">任务状态</div>
+      <div class="value" id="statusRunning"><span class="badge stopped"><span class="dot"></span>未运行</span></div>
+    </div>
+    <div class="status-card">
+      <div class="label">上次执行</div>
+      <div class="value" id="statusLastRun" style="font-size:12px;color:var(--text2)">—</div>
+    </div>
+    <div class="status-card">
+      <div class="label">执行结果</div>
+      <div class="value" id="statusLastResult">—</div>
+    </div>
+    <div class="status-card">
+      <div class="label">下次执行</div>
+      <div class="value" id="statusNextRun" style="font-size:12px;color:var(--text2)">—</div>
+    </div>
+  </div>
+
+  <!-- Main Actions -->
+  <div class="main-actions">
+    <button class="btn btn-success" id="btnStart" onclick="startTask()">▶ 启动定时任务</button>
+    <button class="btn btn-danger"  id="btnStop"  onclick="stopTask()" disabled>⏹ 停止任务</button>
+    <button class="btn btn-warn"  onclick="fetchNow()">⚡ 立即抓取</button>
+    <button class="btn btn-primary" onclick="uploadNow()" id="btnUploadNow">⬆ 立即上传</button>
+    <button class="btn btn-ghost" onclick="saveConfig()">💾 保存配置</button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('ftp')">🔌 连接配置</div>
+    <div class="tab" onclick="switchTab('folders')">📂 下载文件夹</div>
+    <div class="tab" onclick="switchTab('upload')">⬆ 上传配置</div>
+    <div class="tab" onclick="switchTab('schedule')">⏱ 调度 &amp; 归档</div>
+    <div class="tab" onclick="switchTab('archive')">🗂 归档目录</div>
+    <div class="tab" onclick="switchTab('logs')">📋 运行日志</div>
+    <div class="tab" onclick="switchTab('monitor')">🔔 文件监控</div>
+  </div>
+
+  <!-- Tab: FTP -->
+  <div class="tab-panel active" id="panel-ftp">
+    <div class="layout">
+      <div class="card">
+        <div class="card-title">🔌 连接信息</div>
+        <!-- 协议选择 -->
+        <div class="form-group">
+          <label>连接协议</label>
+          <div style="display:flex;gap:8px">
+            <label class="proto-option" id="protoFtpLabel">
+              <input type="radio" name="protocol" value="ftp" id="protoFtp" onchange="onProtocolChange()" />
+              <span>FTP / FTPS</span>
+              <span style="font-size:11px;color:var(--text2);margin-left:4px">端口21</span>
+            </label>
+            <label class="proto-option active" id="protoSftpLabel">
+              <input type="radio" name="protocol" value="sftp" id="protoSftp" checked onchange="onProtocolChange()" />
+              <span>SFTP</span>
+              <span style="font-size:11px;color:var(--text2);margin-left:4px">SSH 端口22</span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>主机地址</label>
+          <input type="text" id="ftpHost" placeholder="例如: 192.168.1.100 或 sftp.example.com" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>端口</label>
+            <input type="number" id="ftpPort" value="22" placeholder="22" />
+          </div>
+          <!-- FTPS 选项（仅FTP协议时显示） -->
+          <div class="form-group" id="ftpsGroup" style="display:none;align-items:flex-end;padding-bottom:1px">
+            <label class="checkbox-row"><input type="checkbox" id="ftpSecure" /> 启用 FTPS (TLS)</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>用户名</label>
+          <input type="text" id="ftpUser" placeholder="输入用户名" />
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="ftpPassword" placeholder="输入密码" />
+        </div>
+        <!-- SFTP 私钥（可选，仅SFTP显示） -->
+        <div id="sftpKeyGroup">
+          <div class="form-group">
+            <label>私钥文件路径 <span style="color:var(--text2)">(可选，密钥登录)</span></label>
+            <input type="text" id="ftpPrivateKey" placeholder="留空则使用密码登录，例: C:/Users/you/.ssh/id_rsa" />
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-ghost" onclick="testConnection()">🔍 测试连接</button>
+          <button class="btn btn-ghost" onclick="openFtpBrowser('/', true)">🌐 浏览远程目录</button>
+        </div>
+      </div>
+
+      <!-- 远程目录浏览（内嵌右侧） -->
+      <div class="card">
+        <div class="card-title">🌐 远程目录预览</div>
+        <div id="ftpBrowserInline">
+          <div style="color:var(--text2);font-size:13px;padding:20px 0 10px">先填写连接信息并点击「浏览远程目录」</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Folders -->
+  <div class="tab-panel" id="panel-folders">
+    <div class="card">
+      <div class="card-title" style="justify-content:space-between">
+        <span>📂 已配置的远程文件夹</span>
+        <button class="btn btn-primary" style="padding:5px 12px" onclick="toggleAddFolder()">＋ 添加文件夹</button>
+      </div>
+
+      <!-- 添加文件夹表单 -->
+      <div class="add-folder-form" id="addFolderForm">
+        <div class="form-group">
+          <label>远程文件夹路径</label>
+          <div class="path-wrap">
+            <input type="text" id="newFolderPath" placeholder="/data/exports 或 /reports" />
+            <button class="btn btn-ghost" onclick="openFtpBrowserForFolder()">📂 浏览</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>文件匹配模式 <span style="color:var(--text2)">(通配符：* ?)</span></label>
+          <input type="text" id="newFolderPattern" placeholder="* 匹配所有，*.csv，report_*.xml" />
+          <div class="tip">示例：*.csv 匹配所有CSV；data_??.txt 匹配 data_01.txt 等</div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="addFolder()">✓ 确认添加</button>
+          <button class="btn btn-ghost" onclick="toggleAddFolder()">取消</button>
+        </div>
+      </div>
+
+      <div class="folder-list" id="folderList">
+        <div class="folder-empty">还没有配置文件夹，点击右上角「添加文件夹」</div>
+      </div>
+    </div>
+
+    <!-- FTP浏览器（在文件夹Tab里用于选路径） -->
+    <div class="card" id="ftpBrowserCard" style="margin-top:14px;display:none">
+      <div class="card-title">📂 浏览 FTP 目录（双击目录进入，单击文件夹可选择）</div>
+      <div id="ftpBrowserFolder"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Upload -->
+  <div class="tab-panel" id="panel-upload">
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title" style="justify-content:space-between">
+        <span>⬆ 上传任务配置</span>
+        <label class="checkbox-row" style="font-weight:600">
+          <input type="checkbox" id="uploadEnabled" onchange="onUploadEnabledChange()" />
+          启用定时上传
+        </label>
+      </div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">
+        将本地文件夹中的文件定时自动上传到 FTP/SFTP 远程目录。使用相同的连接配置，每个文件夹可独立设置是否跳过已上传的文件。
+      </p>
+
+      <!-- 上传调度配置 -->
+      <div id="uploadScheduleSection">
+        <hr class="sep" />
+        <div class="card-title" style="margin-top:4px">⏱ 上传调度</div>
+        <div class="form-group">
+          <label>上传触发方式</label>
+          <select id="uploadScheduleType" onchange="onUploadScheduleTypeChange()">
+            <option value="same">与下载任务同步执行（推荐）</option>
+            <option value="interval">独立固定间隔</option>
+            <option value="cron">独立 Cron 表达式</option>
+          </select>
+          <div class="tip">同步模式下，每次下载任务完成后立即触发上传</div>
+        </div>
+        <div id="uploadIntervalGroup" style="display:none">
+          <div class="form-group">
+            <label>上传间隔</label>
+            <div style="display:flex;gap:8px">
+              <input type="number" id="uploadInterval" value="10" min="1" max="9999" style="flex:1" />
+              <select id="uploadIntervalUnit" style="width:100px">
+                <option value="sec">秒</option>
+                <option value="min" selected>分钟</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div id="uploadCronGroup" style="display:none">
+          <div class="form-group">
+            <label>Cron 表达式</label>
+            <input type="text" id="uploadCronExpr" placeholder="*/10 * * * *" />
+          </div>
+        </div>
+      </div>
+
+      <hr class="sep" />
+
+      <!-- 上传文件夹列表 -->
+      <div class="card-title" style="justify-content:space-between;margin-top:4px">
+        <span>📁 上传文件夹配置</span>
+        <button class="btn btn-primary" style="padding:5px 12px" onclick="toggleAddUploadFolder()">＋ 添加</button>
+      </div>
+
+      <!-- 添加上传文件夹表单 -->
+      <div class="add-folder-form" id="addUploadFolderForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label>本地文件夹路径（从这里选文件）</label>
+            <div class="path-wrap">
+              <input type="text" id="newUploadLocalPath" placeholder="D:\desktop\dalian\{date}\FreightConfirm" />
+              <button class="btn btn-ghost" onclick="browseLocalDir()">📂 浏览</button>
+            </div>
+            <div class="tip">支持绝对路径或 {date} 占位符（需开启下方"按日期扫描"）。例: D:\dalian\{date}\TelexRelease</div>
+          </div>
+          <div class="form-group">
+            <label>远程目标路径（上传到这里）</label>
+            <div class="path-wrap">
+              <input type="text" id="newUploadRemotePath" placeholder="/TelexRelease" />
+              <button class="btn btn-ghost" onclick="openFtpBrowserForUpload()">📂 浏览</button>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>文件匹配模式 <span style="color:var(--text2)">(留空=全部)</span></label>
+            <input type="text" id="newUploadPattern" placeholder="* 或 *.txt 或 Report_*.xml" />
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:14px">
+            <label class="checkbox-row">
+              <input type="checkbox" id="newUploadDeleteAfter" />
+              上传成功后删除本地文件
+            </label>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="width:100%">
+            <label class="checkbox-row" style="font-weight:600">
+              <input type="checkbox" id="newUploadDateScan" onchange="onUploadDateScanChange()" />
+              按日期扫描（手动选择要上传哪些日期的文件）
+            </label>
+          </div>
+          <div class="form-group" id="uploadDateScanDaysGroup" style="display:none;width:100%">
+            <label>快捷选择（点击日期添加/移除）</label>
+            <div id="uploadDateQuickPick" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+            <div class="tip">路径中 {date} 会被替换为 YYYY-MM-DD 格式，只扫描下方选中的日期</div>
+            <label style="margin-top:8px;font-weight:600">已选择的日期</label>
+            <div id="uploadSelectedDates" style="display:flex;flex-wrap:wrap;gap:6px;min-height:32px"></div>
+            <input type="text" id="customDateInput" placeholder="手动输入日期，如 2026-07-20，回车添加"
+              style="margin-top:6px;width:100%" onkeydown="if(event.key==='Enter'){addCustomDate();event.preventDefault()}" />
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:8px">
+          <label class="checkbox-row">
+            <input type="checkbox" id="newUploadSkipUploaded" />
+            跳过已上传的文件 <span style="color:var(--text2);font-weight:400">（勾选后，已记录在上传记录中的文件不再重复上传；不勾选则每次都会上传所有匹配文件）</span>
+          </label>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="addUploadFolder()">✓ 确认添加</button>
+          <button class="btn btn-ghost" onclick="toggleAddUploadFolder()">取消</button>
+        </div>
+      </div>
+
+      <div class="folder-list" id="uploadFolderList">
+        <div class="folder-empty">还没有配置上传文件夹，点击「添加」</div>
+      </div>
+
+      <!-- 上传记录管理 -->
+      <hr class="sep" />
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="font-size:13px;color:var(--text2)">
+          已记录上传文件数：<span id="uploadRecordCount" style="font-weight:600;color:var(--text)">—</span>
+          <span style="margin-left:6px;font-size:11px">（记录用于防止重复上传）</span>
+        </div>
+        <button class="btn btn-ghost" style="font-size:12px" onclick="clearUploadRecords()">🗑 清空上传记录（允许重传）</button>
+      </div>
+    </div>
+
+    <!-- 归档报文对账 + 自动重传 -->
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title" style="justify-content:space-between">
+        <span>🔍 归档报文对账 + 自动重传</span>
+        <label class="checkbox-row" style="font-weight:600">
+          <input type="checkbox" id="oracleEnabled" onchange="onOracleEnabledChange()" />
+          启用对账（Oracle）
+        </label>
+      </div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">
+        扫描已归档报文，与 Oracle 数据库比对放单 / 换单方式状态，不一致自动重新上传到对应远程目录。
+      </p>
+
+      <!-- Oracle 连接 -->
+      <hr class="sep" />
+      <div class="card-title" style="margin-top:4px">🛢 Oracle 连接</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>主机</label>
+          <input type="text" id="oracleHost" placeholder="数据库主机地址" />
+        </div>
+        <div class="form-group" style="max-width:120px">
+          <label>端口</label>
+          <input type="number" id="oraclePort" value="1521" />
+        </div>
+        <div class="form-group" style="max-width:180px">
+          <label>服务名</label>
+          <input type="text" id="oracleService" placeholder="PHYDB" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>用户名</label>
+          <input type="text" id="oracleUser" placeholder="数据库用户名" />
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="oraclePassword" placeholder="数据库密码" />
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end">
+          <button class="btn btn-ghost" onclick="testOracle()">🔌 测试连接</button>
+        </div>
+      </div>
+
+      <!-- 对账调度 -->
+      <hr class="sep" />
+      <div class="card-title" style="margin-top:4px;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span>⚙ 对账自动重传</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label class="checkbox-row" style="font-weight:600">
+            <input type="checkbox" id="reconcileEnabled" onchange="onReconcileEnabledChange()" /> 启用定时对账
+          </label>
+          <button class="btn btn-success" id="btnReconcileRun" onclick="runReconcileNow()">⚡ 立即对账</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="max-width:200px">
+          <label>对账间隔（分钟）</label>
+          <input type="number" id="reconcileInterval" value="30" min="1" max="9999" />
+        </div>
+        <div class="form-group" style="max-width:200px">
+          <label>扫描最近 N 天归档</label>
+          <input type="number" id="reconcileWindow" value="7" min="1" max="365" />
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end">
+          <label class="checkbox-row">
+            <input type="checkbox" id="reconcileAutoReupload" /> 检出不一致自动重传
+          </label>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px" id="reconcileStatusText"></div>
+      <div style="margin-top:6px">
+        <button class="btn btn-ghost" style="font-size:12px;padding:3px 10px" onclick="clearReconcileCache()">🧹 清空已验证缓存（下次全量重对）</button>
+      </div>
+
+      <!-- 重传记录 -->
+      <hr class="sep" />
+      <div class="card-title" style="margin-top:4px;justify-content:space-between">
+        <span>📜 重传记录</span>
+        <button class="btn btn-ghost" style="font-size:12px" onclick="renderReuploadList()">↻ 刷新</button>
+      </div>
+      <div class="folder-list" id="reuploadList">
+        <div class="folder-empty">暂无重传记录</div>
+      </div>
+    </div>
+
+    <!-- FTP浏览器（上传 Tab 用） -->
+    <div class="card" id="ftpBrowserUploadCard" style="display:none">
+      <div class="card-title">📂 浏览远程目录（选择上传目标路径）</div>
+      <div id="ftpBrowserUpload"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Schedule & Archive -->
+  <div class="tab-panel" id="panel-schedule">
+    <div class="layout">
+      <div class="card">
+        <div class="card-title">⏱ 调度配置</div>
+        <div class="form-group">
+          <label>调度类型</label>
+          <select id="scheduleType" onchange="onScheduleTypeChange()">
+            <option value="interval">固定间隔</option>
+            <option value="cron">Cron 表达式</option>
+          </select>
+        </div>
+        <div id="intervalGroup">
+          <div class="form-group">
+            <label>抓取间隔</label>
+            <div style="display:flex;gap:8px">
+              <input type="number" id="scheduleInterval" value="10" min="1" max="9999" style="flex:1" />
+              <select id="scheduleIntervalUnit" style="width:100px" onchange="onIntervalUnitChange()">
+                <option value="sec">秒</option>
+                <option value="min" selected>分钟</option>
+              </select>
+            </div>
+            <div class="tip">文件被抢得快？试试 10~30 秒高频轮询</div>
+          </div>
+        </div>
+        <div id="cronGroup" style="display:none">
+          <div class="form-group">
+            <label>Cron 表达式</label>
+            <input type="text" id="scheduleCron" placeholder="*/10 * * * *" />
+            <div class="tip">格式：分 时 日 月 周 | 例：0 8 * * * 每天8点</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:10px 12px;margin-top:8px;font-size:12px;color:var(--text2)">
+            <div>常用示例：</div>
+            <div style="margin-top:6px;line-height:2">
+              <code style="color:var(--accent)">*/15 * * * *</code> 每15分钟<br>
+              <code style="color:var(--accent)">0 * * * *</code> 每小时整点<br>
+              <code style="color:var(--accent)">0 8,20 * * *</code> 每天8点和20点<br>
+              <code style="color:var(--accent)">0 9 * * 1-5</code> 工作日9点
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📁 本地目录 &amp; 归档</div>
+        <div class="form-group">
+          <label>文件保存根目录</label>
+          <div class="path-wrap">
+            <input type="text" id="localDir" placeholder="点击右侧浏览，或直接输入路径" />
+            <button class="btn btn-ghost" onclick="openLocalDirBrowser()">📂</button>
+          </div>
+        </div>
+        <hr class="sep" />
+        <div class="card-title" style="margin-bottom:10px">🗓 按日期自动归档</div>
+        <div class="form-group">
+          <label class="checkbox-row"><input type="checkbox" id="useDateFolder" checked /> 启用日期子目录（推荐）</label>
+          <div class="tip" style="margin-top:5px">开启后，文件将保存到：根目录 / 日期 / 远程文件夹名 / 文件</div>
+        </div>
+        <div class="form-group" id="dateFmtGroup">
+          <label>日期目录格式</label>
+          <select id="dateFolderFormat">
+            <option value="YYYY-MM-DD">YYYY-MM-DD（2026-06-03）推荐</option>
+            <option value="YYYY-MM-DD_HH">YYYY-MM-DD_HH（精确到小时）</option>
+            <option value="YYYYMMDD">YYYYMMDD（20260603）</option>
+            <option value="YYYY/MM/DD">YYYY/MM/DD（嵌套年月日三层）</option>
+          </select>
+          <div class="tip" id="dateFmtPreview" style="margin-top:5px"></div>
+        </div>
+        <hr class="sep" />
+        <div class="form-row">
+          <div class="form-group">
+            <label class="checkbox-row"><input type="checkbox" id="overwrite" checked /> 覆盖已存在文件</label>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-row"><input type="checkbox" id="deleteAfterDownload" /> 下载后删除远程文件</label>
+          </div>
+        </div>
+        <div id="pathPreview" style="background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:10px 12px;margin-top:10px;font-size:12px;display:none">
+          <div style="color:var(--text2);margin-bottom:4px">示例路径结构：</div>
+          <div id="pathPreviewContent" style="color:var(--accent);line-height:2;font-family:monospace"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Archive Tree -->
+  <div class="tab-panel" id="panel-archive">
+    <div class="card">
+      <div class="card-title" style="justify-content:space-between">
+        <span>🗂 本地归档目录结构</span>
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="loadArchiveTree()">↻ 刷新</button>
+      </div>
+      <div id="archiveTreeWrap">
+        <div style="color:var(--text2);font-size:13px;padding:20px 0">点击刷新查看归档目录结构...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Logs -->
+  <div class="tab-panel" id="panel-logs">
+    <div class="card">
+      <div class="card-title" style="justify-content:space-between">
+        <span>📋 运行日志</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="logCount" style="font-size:11px;color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0">0 条</span>
+          <button class="btn btn-ghost" style="padding:3px 9px;font-size:11px" onclick="clearLogs()">清空</button>
+          <button class="btn btn-ghost" style="padding:3px 9px;font-size:11px" onclick="refreshLogs()">刷新</button>
+        </div>
+      </div>
+      <div class="log-wrap" id="logWrap">
+        <div class="log-empty">暂无日志...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Monitor -->
+  <div class="tab-panel" id="panel-monitor">
+    <div class="layout">
+      <!-- 邮件 SMTP 配置 -->
+      <div class="card">
+        <div class="card-title">📧 邮件通知配置（SMTP）</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>SMTP 服务器</label>
+            <input type="text" id="mailHost" placeholder="smtp.qq.com" />
+          </div>
+          <div class="form-group" style="max-width:120px">
+            <label>端口</label>
+            <input type="number" id="mailPort" value="465" />
+          </div>
+          <div class="form-group" style="max-width:130px">
+            <label>加密(SSL/TLS)</label>
+            <select id="mailSecure">
+              <option value="true">启用</option>
+              <option value="false">不启用</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>发件账号</label>
+            <input type="text" id="mailUser" placeholder="xxx@qq.com" />
+          </div>
+          <div class="form-group">
+            <label>授权码 / 密码</label>
+            <input type="password" id="mailPassword" placeholder="邮箱授权码，非登录密码" />
+          </div>
+          <div class="form-group">
+            <label>默认收件人</label>
+            <input type="text" id="mailTo" placeholder="通知发到这个邮箱" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+            <input type="text" id="testMailTo" placeholder="测试收件人（可留空用默认）" style="flex:1;min-width:200px" />
+            <button class="btn btn-primary" onclick="testMailSend()">📧 发送测试</button>
+            <button class="btn btn-ghost" onclick="saveMailConfig()">💾 保存邮件配置</button>
+          </div>
+        </div>
+        <div class="tip">QQ / 163 等邮箱需使用「授权码」而非登录密码。先填好并「保存邮件配置」，再点「发送测试」验证能否收到。</div>
+      </div>
+
+      <!-- 监控任务 -->
+      <div class="card" style="margin-top:18px">
+        <div class="card-title" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <span>🔔 监控任务</span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <label class="checkbox-row" style="font-weight:600">
+              <input type="checkbox" id="monitorEnabled" onchange="onMonitorEnabledChange()" /> 启用监控
+            </label>
+            <button class="btn btn-success" id="btnMonitorStart" onclick="startMonitor()">▶ 启动</button>
+            <button class="btn btn-danger" id="btnMonitorStop" onclick="stopMonitor()" disabled>⏹ 停止</button>
+            <button class="btn btn-warn" onclick="scanMonitorNow()">⚡ 立即扫描</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="max-width:200px">
+            <label>扫描间隔（分钟）</label>
+            <input type="number" id="monitorInterval" value="5" min="1" max="9999" />
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <span id="monitorStatusText" style="font-size:12px;color:var(--text2)"></span>
+          </div>
+        </div>
+        <hr class="sep" />
+        <div class="card-title" style="justify-content:space-between;margin-top:4px">
+          <span>📁 监控目录</span>
+          <button class="btn btn-primary" style="padding:5px 12px" onclick="toggleAddMonitor()">＋ 添加</button>
+        </div>
+
+        <!-- 添加监控目录表单 -->
+        <div class="add-folder-form" id="addMonitorForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label>远程监控目录</label>
+              <div class="path-wrap">
+                <input type="text" id="newMonitorPath" placeholder="/FreightConfirm" />
+                <button class="btn btn-ghost" onclick="openFtpBrowserForMonitor()">📂 浏览</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>文件匹配模式 <span style="color:var(--text2)">(留空=全部)</span></label>
+              <input type="text" id="newMonitorPattern" placeholder="* 或 *.xml" />
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" onclick="addMonitor()">✓ 确认添加</button>
+            <button class="btn btn-ghost" onclick="toggleAddMonitor()">取消</button>
+          </div>
+        </div>
+
+        <div class="folder-list" id="monitorList">
+          <div class="folder-empty">还没有配置监控目录，点击「添加」</div>
+        </div>
+      </div>
+
+      <!-- 监控专用 FTP 浏览器 -->
+      <div class="card" id="ftpBrowserMonitorCard" style="margin-top:14px;display:none">
+        <div class="card-title">📂 浏览 FTP 目录（选择监控路径）</div>
+        <div id="ftpBrowserMonitor"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 本地目录 Modal -->
+<div class="modal-overlay" id="localDirModal">
+  <div class="modal">
+    <div class="modal-header">📂 选择本地目录 <button class="modal-close" onclick="closeLocalModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="dir-breadcrumb" id="localDirCurrent"></div>
+      <div id="localDirList"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeLocalModal()">取消</button>
+      <button class="btn btn-primary" onclick="confirmLocalDir()">✓ 选择此目录</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let pollTimer = null;
+let localDirCurrent = '';
+let ftpBrowserPath = '/';
+let ftpBrowserTarget = null; // 'inline' | 'folder'
+let folders = [];
+let addingFolder = false;
+let uploadFolders = [];
+let addingUploadFolder = false;
+let monitors = [];
+let addingMonitor = false;
+
+// ========== Init ==========
+async function init() {
+  await loadConfig();
+  await refreshStatus();
+  await refreshLogs();
+  updatePathPreview();
+  startPolling();
+}
+
+// ========== Tabs ==========
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((el, i) => el.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+  const tabs = document.querySelectorAll('.tab');
+  const panels = ['ftp','folders','upload','schedule','archive','logs','monitor'];
+  const idx = panels.indexOf(name);
+  if (idx >= 0) { tabs[idx].classList.add('active'); document.getElementById('panel-' + name).classList.add('active'); }
+  if (name === 'archive') loadArchiveTree();
+  if (name === 'logs') refreshLogs();
+  if (name === 'monitor') { refreshMonitorStatus(); renderMonitorList(); }
+  if (name === 'upload') { refreshReconcileStatus(); renderReuploadList(); }
+}
+
+// ========== Config ==========
+async function loadConfig() {
+  const res = await fetch(API + '/api/config');
+  const cfg = await res.json();
+
+  document.getElementById('ftpHost').value = cfg.ftp?.host || '';
+  document.getElementById('ftpPort').value = cfg.ftp?.port || 22;
+  document.getElementById('ftpSecure').checked = cfg.ftp?.secure || false;
+  document.getElementById('ftpUser').value = cfg.ftp?.user || '';
+  document.getElementById('ftpPassword').value = cfg.ftp?.password || '';
+  document.getElementById('ftpPrivateKey').value = cfg.ftp?.privateKey || '';
+
+  // 协议选择
+  const proto = cfg.ftp?.protocol || 'sftp';
+  if (proto === 'ftp') {
+    document.getElementById('protoFtp').checked = true;
+  } else {
+    document.getElementById('protoSftp').checked = true;
+  }
+  onProtocolChange();
+
+  folders = cfg.folders || [];
+  renderFolderList();
+
+  // 上传配置
+  uploadFolders = cfg.uploadFolders || [];
+  document.getElementById('uploadEnabled').checked = cfg.uploadEnabled || false;
+  const uSched = cfg.uploadSchedule || {};
+  document.getElementById('uploadScheduleType').value = uSched.type || 'same';
+  const uRawInterval = uSched.interval || 10;
+  if (uRawInterval < 1) {
+    document.getElementById('uploadInterval').value = Math.round(uRawInterval * 60);
+    document.getElementById('uploadIntervalUnit').value = 'sec';
+  } else {
+    document.getElementById('uploadInterval').value = uRawInterval;
+    document.getElementById('uploadIntervalUnit').value = 'min';
+  }
+  document.getElementById('uploadCronExpr').value = uSched.cronExpr || '*/10 * * * *';
+  onUploadScheduleTypeChange();
+  renderUploadFolderList();
+  loadUploadRecordCount();
+
+  document.getElementById('scheduleType').value = cfg.schedule?.type || 'interval';
+  // 根据存储的分钟数判断单位：<1 分钟显示为秒
+  const rawInterval = cfg.schedule?.interval || 10;
+  if (rawInterval < 1) {
+    document.getElementById('scheduleInterval').value = Math.round(rawInterval * 60);
+    document.getElementById('scheduleIntervalUnit').value = 'sec';
+  } else {
+    document.getElementById('scheduleInterval').value = rawInterval;
+    document.getElementById('scheduleIntervalUnit').value = 'min';
+  }
+  document.getElementById('scheduleCron').value = cfg.schedule?.cronExpr || '*/10 * * * *';
+  onScheduleTypeChange();
+
+  document.getElementById('localDir').value = cfg.localDir || '';
+  document.getElementById('useDateFolder').checked = cfg.useDateFolder !== false;
+  document.getElementById('dateFolderFormat').value = cfg.dateFolderFormat || 'YYYY-MM-DD';
+  document.getElementById('overwrite').checked = cfg.overwrite !== false;
+  document.getElementById('deleteAfterDownload').checked = cfg.deleteAfterDownload || false;
+
+  // 文件监控配置
+  const m = cfg.mail || {};
+  document.getElementById('mailHost').value = m.host || '';
+  document.getElementById('mailPort').value = m.port || 465;
+  document.getElementById('mailSecure').value = String(m.secure !== false);
+  document.getElementById('mailUser').value = m.user || '';
+  document.getElementById('mailPassword').value = m.password || '';
+  document.getElementById('mailTo').value = m.to || '';
+  monitors = cfg.monitors || [];
+  document.getElementById('monitorEnabled').checked = cfg.monitorEnabled || false;
+  document.getElementById('monitorInterval').value = cfg.monitorInterval || 5;
+  onMonitorEnabledChange();
+
+  // 归档报文对账配置
+  const o = cfg.oracle || {};
+  document.getElementById('oracleEnabled').checked = o.enabled || false;
+  document.getElementById('oracleHost').value = o.host || '';
+  document.getElementById('oraclePort').value = o.port || 1521;
+  document.getElementById('oracleService').value = o.serviceName || '';
+  document.getElementById('oracleUser').value = o.user || '';
+  document.getElementById('oraclePassword').value = o.password || '';
+  onOracleEnabledChange();
+  const rc = cfg.reconcile || {};
+  document.getElementById('reconcileEnabled').checked = rc.enabled || false;
+  document.getElementById('reconcileInterval').value = rc.interval || 30;
+  document.getElementById('reconcileWindow').value = rc.windowDays || 7;
+  document.getElementById('reconcileAutoReupload').checked = rc.autoReupload !== false;
+  onReconcileEnabledChange();
+
+  updatePathPreview();
+}
+
+function buildConfig() {
+  const proto = document.querySelector('input[name="protocol"]:checked')?.value || 'sftp';
+  return {
+    ftp: {
+      protocol: proto,
+      host: v('ftpHost'),
+      port: parseInt(v('ftpPort')) || (proto === 'sftp' ? 22 : 21),
+      secure: document.getElementById('ftpSecure').checked,
+      user: v('ftpUser'),
+      password: v('ftpPassword'),
+      privateKey: v('ftpPrivateKey')
+    },
+    folders: folders,
+    uploadFolders: uploadFolders,
+    uploadEnabled: document.getElementById('uploadEnabled').checked,
+    uploadSchedule: {
+      type: v('uploadScheduleType'),
+      interval: (() => {
+        const val = parseInt(v('uploadInterval')) || 10;
+        const unit = v('uploadIntervalUnit') || 'min';
+        return unit === 'sec' ? val / 60 : val;
+      })(),
+      cronExpr: v('uploadCronExpr')
+    },
+    schedule: {
+      type: v('scheduleType'),
+      interval: (() => {
+        const val = parseInt(v('scheduleInterval')) || 10;
+        const unit = v('scheduleIntervalUnit') || 'min';
+        return unit === 'sec' ? val / 60 : val;
+      })(),
+      cronExpr: v('scheduleCron')
+    },
+    localDir: v('localDir'),
+    useDateFolder: document.getElementById('useDateFolder').checked,
+    dateFolderFormat: v('dateFolderFormat'),
+    overwrite: document.getElementById('overwrite').checked,
+    deleteAfterDownload: document.getElementById('deleteAfterDownload').checked,
+    // 文件监控
+    mail: {
+      host: v('mailHost'),
+      port: parseInt(v('mailPort')) || 465,
+      secure: document.getElementById('mailSecure').value === 'true',
+      user: v('mailUser'),
+      password: v('mailPassword'),
+      to: v('mailTo')
+    },
+    monitors: monitors,
+    monitorEnabled: document.getElementById('monitorEnabled').checked,
+    monitorInterval: parseInt(v('monitorInterval')) || 5,
+    // 归档报文对账
+    oracle: {
+      host: v('oracleHost'),
+      port: parseInt(v('oraclePort')) || 1521,
+      serviceName: v('oracleService'),
+      user: v('oracleUser'),
+      password: v('oraclePassword'),
+      enabled: document.getElementById('oracleEnabled').checked
+    },
+    reconcile: {
+      enabled: document.getElementById('reconcileEnabled').checked,
+      interval: parseInt(v('reconcileInterval')) || 30,
+      windowDays: parseInt(v('reconcileWindow')) || 7,
+      autoReupload: document.getElementById('reconcileAutoReupload').checked
+    }
+  };
+}
+
+async function saveConfig() {
+  const cfg = buildConfig();
+  const res = await fetch(API + '/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfg) });
+  const data = await res.json();
+  showToast(data.success ? '配置已保存' : '保存失败: ' + data.message, data.success ? 'success' : 'error');
+}
+
+function v(id) { return document.getElementById(id).value.trim(); }
+
+// ========== Folder Management ==========
+function renderFolderList() {
+  const el = document.getElementById('folderList');
+  if (!folders.length) {
+    el.innerHTML = '<div class="folder-empty">还没有配置文件夹，点击右上角「添加文件夹」</div>';
+    return;
+  }
+  el.innerHTML = folders.map((f, i) => `
+    <div class="folder-item ${f.enabled ? '' : 'disabled'}">
+      <input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="toggleFolder(${i})" title="启用/禁用" />
+      <div style="flex:1;min-width:0">
+        <div class="folder-path">📁 ${escHtml(f.remotePath)}</div>
+        <div class="folder-pattern">匹配模式: <span style="color:var(--accent)">${escHtml(f.filePattern || '*')}</span></div>
+      </div>
+      <div class="folder-actions">
+        <button class="btn btn-ghost" style="padding:4px 9px;font-size:11px" onclick="editFolder(${i})">编辑</button>
+        <button class="btn btn-danger" style="padding:4px 9px;font-size:11px" onclick="removeFolder(${i})">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleAddFolder() {
+  const form = document.getElementById('addFolderForm');
+  addingFolder = !addingFolder;
+  form.classList.toggle('show', addingFolder);
+  if (addingFolder) {
+    document.getElementById('newFolderPath').value = '';
+    document.getElementById('newFolderPattern').value = '*';
+    document.getElementById('newFolderPath').focus();
+  }
+}
+
+function addFolder() {
+  const p = document.getElementById('newFolderPath').value.trim();
+  const pat = document.getElementById('newFolderPattern').value.trim() || '*';
+  if (!p) { showToast('请输入远程文件夹路径', 'warn'); return; }
+  folders.push({ remotePath: p, filePattern: pat, enabled: true });
+  renderFolderList();
+  toggleAddFolder();
+  showToast('文件夹已添加，记得保存配置', 'info');
+}
+
+function removeFolder(i) {
+  folders.splice(i, 1);
+  renderFolderList();
+}
+
+function toggleFolder(i) {
+  folders[i].enabled = !folders[i].enabled;
+  renderFolderList();
+}
+
+function editFolder(i) {
+  const f = folders[i];
+  const newPath = prompt('修改远程路径：', f.remotePath);
+  if (newPath === null) return;
+  const newPat = prompt('修改文件匹配模式：', f.filePattern || '*');
+  if (newPat === null) return;
+  folders[i] = { ...f, remotePath: newPath.trim(), filePattern: newPat.trim() || '*' };
+  renderFolderList();
+}
+
+// ========== FTP Browser ==========
+function openFtpBrowserForFolder() {
+  ftpBrowserTarget = 'folder';
+  document.getElementById('ftpBrowserCard').style.display = 'block';
+  loadFtpDir('/');
+}
+
+async function openFtpBrowser(dir, inline) {
+  ftpBrowserTarget = inline ? 'inline' : 'folder';
+  loadFtpDir(dir || '/');
+}
+
+function loadFtpBrowser(target, dir) {
+  ftpBrowserTarget = target; // 'inline' | 'folder' | 'upload'
+  loadFtpDir(dir || '/');
+}
+
+async function loadFtpDir(remotePath) {
+  let targetEl;
+  if (ftpBrowserTarget === 'inline') targetEl = document.getElementById('ftpBrowserInline');
+  else if (ftpBrowserTarget === 'upload') targetEl = document.getElementById('ftpBrowserUpload');
+  else if (ftpBrowserTarget === 'monitor') targetEl = document.getElementById('ftpBrowserMonitor');
+  else targetEl = document.getElementById('ftpBrowserFolder');
+
+  if (!targetEl) { showToast('浏览面板未找到', 'error'); return; }
+  targetEl.innerHTML = '<div class="ftp-loading">⏳ 加载中...</div>';
+
+  let data;
+  try {
+    const res = await fetch(API + '/api/ftp-list', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ remotePath })
+    });
+    data = await res.json();
+  } catch(e) {
+    targetEl.innerHTML = `<div class="ftp-empty">❌ 请求失败: ${escHtml(e.message)}<br><span style="font-size:11px">请确认 FTP 服务正在运行且地址可访问</span></div>`;
+    return;
+  }
+
+  if (!data.success) {
+    targetEl.innerHTML = `<div class="ftp-empty">❌ ${escHtml(data.message)}<br><span style="font-size:11px">请先保存 FTP 连接信息后再浏览</span></div>`;
+    return;
+  }
+
+  ftpBrowserPath = data.path;
+  const parent = data.path === '/' ? null : data.path.replace(/\/[^/]+\/?$/, '') || '/';
+
+  let html = `<div class="ftp-browser">
+    <div class="ftp-browser-header">
+      <span class="ftp-breadcrumb">📍 ${escHtml(data.path)}</span>
+      ${parent ? `<button class="btn btn-ghost" style="padding:2px 8px;font-size:11px" onclick="loadFtpDir('${esc(parent)}')">⬆ 上级</button>` : ''}
+    </div>
+    <div class="ftp-list">`;
+
+  if (!data.items.length) {
+    html += '<div class="ftp-empty">空目录</div>';
+  } else {
+    for (const item of data.items) {
+      if (item.type === 'dir') {
+        const childPath = (data.path.endsWith('/') ? data.path : data.path + '/') + item.name;
+        html += `<div class="ftp-item dir" ondblclick="loadFtpDir('${esc(childPath)}')" onclick="">
+          <span class="fi-icon">📁</span>
+          <span class="fi-name">${escHtml(item.name)}</span>
+          <button class="btn btn-primary" style="padding:2px 9px;font-size:11px;margin-left:auto" onclick="selectFtpFolder('${esc(childPath)}')">选择</button>
+        </div>`;
+      } else {
+        html += `<div class="ftp-item">
+          <span class="fi-icon">📄</span>
+          <span class="fi-name" style="color:var(--text2)">${escHtml(item.name)}</span>
+          <span class="fi-size">${item.size ? formatSize(item.size) : ''}</span>
+        </div>`;
+      }
+    }
+  }
+  html += '</div></div>';
+
+  // 当前目录也可选择
+  html += `<div style="margin-top:8px;display:flex;gap:8px">
+    <button class="btn btn-primary" style="font-size:12px" onclick="selectFtpFolder('${esc(data.path)}')">✓ 选择当前目录 (${escHtml(data.path)})</button>
+  </div>`;
+
+  targetEl.innerHTML = html;
+}
+
+function selectFtpFolder(folderPath) {
+  if (ftpBrowserTarget === 'upload') {
+    // 填入上传配置的远程路径
+    document.getElementById('newUploadRemotePath').value = folderPath;
+    document.getElementById('addUploadFolderForm').classList.add('show');
+    addingUploadFolder = true;
+    document.getElementById('ftpBrowserUploadCard').style.display = 'none';
+    showToast('远程路径已填入', 'info');
+  } else if (ftpBrowserTarget === 'monitor') {
+    document.getElementById('newMonitorPath').value = folderPath;
+    document.getElementById('addMonitorForm').classList.add('show');
+    addingMonitor = true;
+    document.getElementById('ftpBrowserMonitorCard').style.display = 'none';
+    showToast('监控目录已填入', 'info');
+  } else {
+    document.getElementById('newFolderPath').value = folderPath;
+    document.getElementById('addFolderForm').classList.add('show');
+    addingFolder = true;
+    switchTab('folders');
+    document.getElementById('ftpBrowserCard').style.display = 'none';
+    showToast('路径已填入，确认后点击「确认添加」', 'info');
+  }
+}
+
+// ========== Protocol Switch ==========
+function onProtocolChange() {
+  const proto = document.querySelector('input[name="protocol"]:checked')?.value || 'sftp';
+  const isSftp = proto === 'sftp';
+  const portEl = document.getElementById('ftpPort');
+
+  // 自动切换端口默认值（仅当端口是两个默认值时才切换）
+  const curPort = parseInt(portEl.value);
+  if (isSftp && curPort === 21) portEl.value = 22;
+  if (!isSftp && curPort === 22) portEl.value = 21;
+
+  // 显示/隐藏 SFTP 专属字段
+  document.getElementById('sftpKeyGroup').style.display = isSftp ? '' : 'none';
+  // 显示/隐藏 FTPS 选项
+  document.getElementById('ftpsGroup').style.display = isSftp ? 'none' : 'flex';
+
+  // 高亮选中的协议按钮
+  document.getElementById('protoFtpLabel').classList.toggle('active', !isSftp);
+  document.getElementById('protoSftpLabel').classList.toggle('active', isSftp);
+}
+
+// ========== Schedule ==========
+function onScheduleTypeChange() {
+  const t = v('scheduleType');
+  document.getElementById('intervalGroup').style.display = t === 'interval' ? '' : 'none';
+  document.getElementById('cronGroup').style.display = t === 'cron' ? '' : 'none';
+}
+
+function onIntervalUnitChange() {
+  const unit = v('scheduleIntervalUnit');
+  const input = document.getElementById('scheduleInterval');
+  const tip = input.parentElement.parentElement.querySelector('.tip');
+  if (unit === 'sec') {
+    input.min = 5; input.max = 59;
+    if (parseInt(input.value) > 59) input.value = 30;
+    if (tip) tip.textContent = '文件被抢得快？10~30 秒高频轮询，抢占先机';
+  } else {
+    input.min = 1; input.max = 1440;
+    if (tip) tip.textContent = '建议 1~60 分钟，文件稳定时用';
+  }
+}
+
+// ========== Path Preview ==========
+function updatePathPreview() {
+  const localDir = v('localDir') || 'D:/FTP下载';
+  const useDateFolder = document.getElementById('useDateFolder').checked;
+  const fmt = v('dateFolderFormat') || 'YYYY-MM-DD';
+  const today = getDateStr(fmt);
+
+  const dateFmtPreview = document.getElementById('dateFmtPreview');
+  dateFmtPreview.textContent = '当前日期目录名：' + today;
+
+  document.getElementById('dateFmtGroup').style.display = useDateFolder ? '' : 'none';
+
+  const wrap = document.getElementById('pathPreview');
+  const content = document.getElementById('pathPreviewContent');
+
+  if (!localDir) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+
+  if (useDateFolder) {
+    content.innerHTML = [
+      localDir + '/',
+      `  ├─ ${today}/`,
+      `  │    ├─ reports/`,
+      `  │    │    ├─ report_001.csv`,
+      `  │    │    └─ report_002.csv`,
+      `  │    └─ exports/`,
+      `  │         └─ data_20260603.xml`,
+      `  └─ ${getDateStr(fmt, 1)}/`,
+      `       └─ ...`
+    ].map(l => escHtml(l)).join('<br>');
+  } else {
+    content.innerHTML = [
+      localDir + '/',
+      `  ├─ reports/`,
+      `  │    ├─ report_001.csv`,
+      `  │    └─ report_002.csv`,
+      `  └─ exports/`,
+      `       └─ data_20260603.xml`
+    ].map(l => escHtml(l)).join('<br>');
+  }
+}
+
+function getDateStr(fmt, offsetDays) {
+  const d = new Date();
+  if (offsetDays) d.setDate(d.getDate() - offsetDays);
+  const pad = n => String(n).padStart(2, '0');
+  return fmt
+    .replace('YYYY', d.getFullYear())
+    .replace('MM', pad(d.getMonth() + 1))
+    .replace('DD', pad(d.getDate()))
+    .replace('HH', pad(d.getHours()));
+}
+
+document.addEventListener('change', e => {
+  if (['useDateFolder','dateFolderFormat','localDir'].includes(e.target.id)) updatePathPreview();
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'localDir') updatePathPreview();
+});
+
+// ========== Task Control ==========
+async function startTask() {
+  await saveConfig();
+  const res = await fetch(API + '/api/start', { method: 'POST' });
+  const data = await res.json();
+  showToast(data.success ? '定时任务已启动' : '启动失败', data.success ? 'success' : 'error');
+  await refreshStatus();
+  await refreshLogs();
+}
+
+async function stopTask() {
+  await fetch(API + '/api/stop', { method: 'POST' });
+  showToast('定时任务已停止', 'info');
+  await refreshStatus();
+  await refreshLogs();
+}
+
+async function fetchNow() {
+  showToast('正在连接服务器...', 'info');
+  const res = await fetch(API + '/api/fetch-now', { method: 'POST' });
+  const data = await res.json();
+  showToast(data.success ? (data.message || '抓取完成') : '抓取失败: ' + data.message, data.success ? 'success' : 'error');
+  await refreshStatus();
+  await refreshLogs();
+  switchTab('logs');
+}
+
+async function uploadNow() {
+  await saveConfig();
+  showToast('正在上传文件...', 'info');
+  const res = await fetch(API + '/api/upload-now', { method: 'POST' });
+  const data = await res.json();
+  showToast(data.success ? (data.message || '上传完成') : '上传失败: ' + data.message, data.success ? 'success' : 'error');
+  await refreshStatus();
+  await refreshLogs();
+  await loadUploadRecordCount();
+  switchTab('logs');
+}
+
+async function loadUploadRecordCount() {
+  try {
+    const res = await fetch(API + '/api/upload-records');
+    const data = await res.json();
+    const el = document.getElementById('uploadRecordCount');
+    if (el) el.textContent = data.total || 0;
+  } catch (_) {}
+}
+
+async function clearUploadRecords() {
+  if (!confirm('清空上传记录后，所有本地文件将在下次上传时被视为新文件重新上传，确定吗？')) return;
+  const res = await fetch(API + '/api/upload-records', { method: 'DELETE' });
+  const data = await res.json();
+  showToast(data.success ? '上传记录已清空' : '清空失败', data.success ? 'success' : 'error');
+  await loadUploadRecordCount();
+}
+
+// ========== Upload Folder Management ==========
+
+function renderUploadFolderList() {
+  const el = document.getElementById('uploadFolderList');
+  if (!uploadFolders || !uploadFolders.length) {
+    el.innerHTML = '<div class="folder-empty">还没有配置上传文件夹，点击「添加」</div>';
+    return;
+  }
+  el.innerHTML = uploadFolders.map((f, i) => `
+    <div class="folder-item ${f.enabled ? '' : 'disabled'}">
+      <input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="toggleUploadFolder(${i})" title="启用/禁用" />
+      <div style="flex:1;min-width:0">
+        <div class="folder-path" style="font-size:12px">
+          <span style="color:var(--text2)">本地:</span> ${escHtml(f.localPath || '')}
+          <span style="color:var(--accent);margin:0 6px">→</span>
+          <span style="color:var(--text2)">远程:</span> ${escHtml(f.remotePath || '')}
+        </div>
+        <div class="folder-pattern" style="margin-top:4px">
+          模式: <span style="color:var(--accent)">${escHtml(f.filePattern || '*')}</span>
+          ${f.scanDates && f.scanDates.length ? ` · <span style="color:var(--accent)">📅 ${f.scanDates.length} 个日期</span>` : ''}
+          ${f.dateScanDays && !f.scanDates ? ` · <span style="color:var(--accent)">📅 最近 ${f.dateScanDays} 天（旧配置）</span>` : ''}
+          ${f.skipUploaded ? ` · <span style="color:var(--success)">✓ 跳过已上传</span>` : ''}
+          ${f.deleteAfterUpload ? ' · <span style="color:var(--warn)">上传后删除本地</span>' : ''}
+        </div>
+      </div>
+      <div class="folder-actions">
+        <button class="btn btn-danger" style="padding:4px 9px;font-size:11px" onclick="removeUploadFolder(${i})">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleAddUploadFolder() {
+  const form = document.getElementById('addUploadFolderForm');
+  addingUploadFolder = !addingUploadFolder;
+  form.classList.toggle('show', addingUploadFolder);
+  if (addingUploadFolder) {
+    document.getElementById('newUploadLocalPath').value = '';
+    document.getElementById('newUploadRemotePath').value = '';
+    document.getElementById('newUploadPattern').value = '';
+    document.getElementById('newUploadDeleteAfter').checked = false;
+    document.getElementById('newUploadDateScan').checked = false;
+    document.getElementById('uploadDateScanDaysGroup').style.display = 'none';
+    uploadSelectedDatesList = [];
+    document.getElementById('customDateInput').value = '';
+    document.getElementById('newUploadSkipUploaded').checked = false;
+  }
+}
+
+function onUploadDateScanChange() {
+  const checked = document.getElementById('newUploadDateScan').checked;
+  document.getElementById('uploadDateScanDaysGroup').style.display = checked ? 'block' : 'none';
+  if (checked) {
+    renderQuickPickDates();
+    uploadSelectedDatesList = [];
+    renderSelectedDates();
+    const localEl = document.getElementById('newUploadLocalPath');
+    if (!localEl.value.includes('{date}')) {
+      localEl.placeholder = '本地目录/{date}/FreightConfirm（如 /opt/ftp-fetcher/data/{date}/FreightConfirm）';
+    }
+  }
+}
+
+// ---- 日期选择器状态与函数 ----
+let uploadSelectedDatesList = [];
+
+function formatDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function renderQuickPickDates() {
+  const el = document.getElementById('uploadDateQuickPick');
+  const today = new Date();
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const ds = formatDateStr(d);
+    const label = i === 0 ? '今天' : (i === 1 ? '昨天' : ds.slice(5));
+    const active = uploadSelectedDatesList.includes(ds) ? 'active' : '';
+    html += `<button type="button" class="date-chip ${active}" onclick="toggleDateChip('${ds}')">${label}</button>`;
+  }
+  el.innerHTML = html;
+}
+
+function toggleDateChip(ds) {
+  const idx = uploadSelectedDatesList.indexOf(ds);
+  if (idx >= 0) uploadSelectedDatesList.splice(idx, 1);
+  else uploadSelectedDatesList.push(ds);
+  // 按日期倒序排列（最近在前）
+  uploadSelectedDatesList.sort((a,b)=>b.localeCompare(a));
+  renderQuickPickDates();
+  renderSelectedDates();
+}
+
+function addCustomDate() {
+  const input = document.getElementById('customDateInput');
+  const val = input.value.trim();
+  if (!val) return;
+  // 尝试解析并格式化
+  let ds = val;
+  // 简单格式化：如果只输入了 MM-DD，补上年份
+  if (/^\d{1,2}-\d{1,2}$/.test(ds)) {
+    ds = new Date().getFullYear() + '-' + ds.padStart(5,'0').replace(/^(\d+)-(\d+)$/, (_,m,d)=>
+      String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0'));
+  } else if (/^\d{4}$/.test(ds)) {
+    ds = val.slice(0,4)+'-01-01';
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) { showToast('日期格式不对，请用 YYYY-MM-DD','warn'); return; }
+  if (!uploadSelectedDatesList.includes(ds)) {
+    uploadSelectedDatesList.push(ds);
+    uploadSelectedDatesList.sort((a,b)=>b.localeCompare(a));
+    renderQuickPickDates();
+    renderSelectedDates();
+  }
+  input.value = '';
+}
+
+function removeSelectedDate(ds) {
+  uploadSelectedDatesList = uploadSelectedDatesList.filter(x => x !== ds);
+  renderQuickPickDates();
+  renderSelectedDates();
+}
+
+function renderSelectedDates() {
+  const el = document.getElementById('uploadSelectedDates');
+  if (!uploadSelectedDatesList.length) {
+    el.innerHTML = '<span style="color:var(--text2);font-size:12px;line-height:32px">尚未选择任何日期</span>';
+    return;
+  }
+  el.innerHTML = uploadSelectedDatesList.map(ds =>
+    `<span class="date-tag">${ds} <button type="button" onclick="removeSelectedDate('${ds}')">&times;</button></span>`
+  ).join('');
+}
+
+function addUploadFolder() {
+  const localPath = document.getElementById('newUploadLocalPath').value.trim();
+  const remotePath = document.getElementById('newUploadRemotePath').value.trim();
+  const filePattern = document.getElementById('newUploadPattern').value.trim() || '*';
+  const deleteAfterUpload = document.getElementById('newUploadDeleteAfter').checked;
+  const dateScanEnabled = document.getElementById('newUploadDateScan').checked;
+  // 新格式：scanDates 为日期字符串数组，兼容旧 dateScanDays 数字格式
+  let scanDates = [];
+  if (dateScanEnabled) {
+    scanDates = uploadSelectedDatesList.length > 0 ? [...uploadSelectedDatesList] : [formatDateStr(new Date())];
+  }
+  const skipUploaded = document.getElementById('newUploadSkipUploaded').checked;
+  if (!localPath || !remotePath) { showToast('本地路径和远程路径都必须填写', 'warn'); return; }
+  uploadFolders.push({ localPath, remotePath, filePattern, deleteAfterUpload, scanDates, skipUploaded, enabled: true });
+  renderUploadFolderList();
+  toggleAddUploadFolder();
+  showToast('已添加上传文件夹', 'success');
+}
+
+function removeUploadFolder(i) {
+  uploadFolders.splice(i, 1);
+  renderUploadFolderList();
+}
+
+function toggleUploadFolder(i) {
+  uploadFolders[i].enabled = !uploadFolders[i].enabled;
+  renderUploadFolderList();
+}
+
+function onUploadEnabledChange() {
+  // 不需要额外操作，保存配置时会自动读取
+}
+
+function onUploadScheduleTypeChange() {
+  const t = v('uploadScheduleType');
+  document.getElementById('uploadIntervalGroup').style.display = t === 'interval' ? '' : 'none';
+  document.getElementById('uploadCronGroup').style.display = t === 'cron' ? '' : 'none';
+}
+
+function browseLocalDir() {
+  // 提示用户复制粘贴路径（浏览器安全限制无法直接访问本地文件系统）
+  showToast('请直接在输入框中粘贴本地文件夹的完整路径', 'info');
+}
+
+function openFtpBrowserForUpload() {
+  try {
+    const card = document.getElementById('ftpBrowserUploadCard');
+    if (!card) { showToast('FTP浏览器面板未找到，请刷新页面', 'error'); return; }
+    card.style.display = 'block';
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    loadFtpBrowser('upload', '/');
+  } catch(e) {
+    showToast('浏览失败: ' + e.message, 'error');
+  }
+}
+
+async function testConnection() {
+  await saveConfig();
+  showToast('正在测试连接...', 'info');
+  const ftpConf = buildConfig().ftp;
+  const res = await fetch(API + '/api/test-connection', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(ftpConf) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  await refreshLogs();
+}
+
+// ========== Status ==========
+async function refreshStatus() {
+  const res = await fetch(API + '/api/status');
+  const s = await res.json();
+
+  const runEl = document.getElementById('statusRunning');
+  runEl.innerHTML = s.running
+    ? '<span class="badge running"><span class="dot pulse"></span>运行中</span>'
+    : '<span class="badge stopped"><span class="dot"></span>未运行</span>';
+
+  document.getElementById('statusLastRun').textContent = s.lastRun || '—';
+  document.getElementById('statusNextRun').textContent = s.nextRun || '—';
+
+  const re = document.getElementById('statusLastResult');
+  if (s.lastStatus === 'success') re.innerHTML = '<span class="badge success">✓ 成功</span>';
+  else if (s.lastStatus === 'warn')    re.innerHTML = '<span class="badge warn">⚠ 部分失败</span>';
+  else if (s.lastStatus === 'error')   re.innerHTML = '<span class="badge error">✗ 失败</span>';
+  else re.textContent = '—';
+
+  document.getElementById('btnStart').disabled = s.running;
+  document.getElementById('btnStop').disabled = !s.running;
+}
+
+// ========== Logs ==========
+async function refreshLogs() {
+  const res = await fetch(API + '/api/logs?limit=300');
+  const logs = await res.json();
+  document.getElementById('logCount').textContent = logs.length + ' 条';
+  const wrap = document.getElementById('logWrap');
+  if (!logs.length) {
+    wrap.innerHTML = '<div class="log-empty">暂无日志，启动任务或手动抓取后将在此显示</div>';
+    return;
+  }
+  wrap.innerHTML = logs.map(l =>
+    `<div class="log-entry">
+      <span class="log-time">${l.time}</span>
+      <span class="log-level ${l.level}">${l.level.toUpperCase()}</span>
+      <span class="log-msg">${escHtml(l.message)}</span>
+    </div>`
+  ).join('');
+}
+
+async function clearLogs() {
+  await fetch(API + '/api/logs', { method: 'DELETE' });
+  await refreshLogs();
+  showToast('日志已清空', 'info');
+}
+
+// ========== Archive Tree ==========
+async function loadArchiveTree() {
+  const res = await fetch(API + '/api/archive-tree');
+  const data = await res.json();
+  const wrap = document.getElementById('archiveTreeWrap');
+
+  if (!data.baseDir) {
+    wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">尚未配置本地目录</div>';
+    return;
+  }
+
+  if (!data.tree.length) {
+    wrap.innerHTML = `<div style="color:var(--text2);font-size:13px">目录为空，暂无归档文件<br><span style="font-size:11px">基础目录：${escHtml(data.baseDir)}</span></div>`;
+    return;
+  }
+
+  // 只显示最近7天的日期目录，按日期降序排列
+  const MAX_ARCHIVE_DAYS = 7;
+  const sortedDirs = [...data.tree].sort((a, b) => (b.name > a.name ? 1 : -1));
+  const recentDirs = sortedDirs.slice(0, MAX_ARCHIVE_DAYS);
+  // 检查是否有更多未显示的
+  const hiddenCount = data.tree.length - recentDirs.length;
+
+  let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:12px">📁 基础目录：${escHtml(data.baseDir)} ${hiddenCount > 0 ? '<span style="color:var(--text3)">（仅显示最近 ' + MAX_ARCHIVE_DAYS + ' 天，共 ' + data.tree.length + ' 个）</span>' : ''}</div><div class="archive-tree">`;
+
+  for (const dateDir of recentDirs) {
+    const totalFiles = (dateDir.fileCount || 0) + (dateDir.children || []).reduce((s, c) => s + (c.fileCount || 0), 0);
+    html += `
+      <div class="archive-date">
+        <div class="archive-date-header" onclick="this.nextElementSibling.classList.toggle('open')">
+          <span>📅</span>
+          <span style="flex:1">${escHtml(dateDir.name)}</span>
+          <span style="background:rgba(79,142,247,.12);color:var(--accent);padding:1px 9px;border-radius:10px;font-size:11px">${totalFiles} 文件</span>
+          <span style="color:var(--text2);font-size:11px;margin-left:6px">▾</span>
+        </div>
+        <div class="archive-date-body">
+    `;
+    if (dateDir.children && dateDir.children.length) {
+      for (const sub of dateDir.children) {
+        html += `<div class="archive-subfolder">
+          <span class="asf-icon">📁</span>
+          <span style="flex:1">${escHtml(sub.name)}</span>
+          <span class="asf-count">${sub.fileCount} 个文件</span>
+        </div>`;
+      }
+    } else if (dateDir.fileCount > 0) {
+      html += `<div class="archive-subfolder"><span style="color:var(--text2)">${dateDir.fileCount} 个文件</span></div>`;
+    }
+    html += '</div></div>';
+  }
+  html += '</div>';
+  wrap.innerHTML = html;
+}
+
+// ========== Local Dir Browser ==========
+async function openLocalDirBrowser() {
+  const cur = v('localDir');
+  document.getElementById('localDirModal').classList.add('show');
+  await loadLocalDir(cur || null);
+}
+
+function closeLocalModal() { document.getElementById('localDirModal').classList.remove('show'); }
+function confirmLocalDir() {
+  document.getElementById('localDir').value = localDirCurrent;
+  closeLocalModal();
+  updatePathPreview();
+}
+
+async function loadLocalDir(dir) {
+  const res = await fetch(API + '/api/browse-local', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ dir }) });
+  if (!res.ok) { showToast('无法读取目录', 'error'); return; }
+  const data = await res.json();
+  localDirCurrent = data.current;
+  document.getElementById('localDirCurrent').textContent = data.current;
+  let html = '';
+  if (data.parent) html += `<div class="dir-item" onclick="loadLocalDir('${esc(data.parent)}')"><span>⬆</span> 上一级</div>`;
+  if (!data.items.length) html += '<div style="color:var(--text2);font-size:12px;padding:12px">没有子文件夹</div>';
+  else html += data.items.map(it => `<div class="dir-item" ondblclick="loadLocalDir('${esc(it.path)}')" onclick=""><span>📁</span>${escHtml(it.name)}</div>`).join('');
+  document.getElementById('localDirList').innerHTML = html;
+}
+
+// ========== Polling ==========
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => { await refreshStatus(); await refreshLogs(); await refreshMonitorStatus(); await refreshReconcileStatus(); }, 5000);
+}
+
+// ========== Helpers ==========
+function formatSize(b) {
+  if (!b) return '';
+  if (b < 1024) return b + 'B';
+  if (b < 1048576) return (b/1024).toFixed(1) + 'KB';
+  return (b/1048576).toFixed(2) + 'MB';
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function esc(s) {
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+
+let toastTimer = null;
+function showToast(msg, type='info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${type} show`;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+// ========== 文件监控 ==========
+
+function onMonitorEnabledChange() {
+  // 仅切换复选框状态，实际启动/停止由按钮触发
+  // （保留此函数以便将来联动）
+}
+
+function toggleAddMonitor() {
+  const form = document.getElementById('addMonitorForm');
+  addingMonitor = !addingMonitor;
+  form.classList.toggle('show', addingMonitor);
+  if (addingMonitor) {
+    document.getElementById('newMonitorPath').value = '';
+    document.getElementById('newMonitorPattern').value = '';
+  }
+}
+
+// ---- 邮件配置 ----
+async function saveMailConfig() {
+  // 把邮件配置合并进整体配置并保存
+  const cfg = buildConfig();
+  const res = await fetch(API + '/api/config', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfg)
+  });
+  const data = await res.json();
+  showToast(data.success ? '邮件配置已保存' : '保存失败: ' + data.message, data.success ? 'success' : 'error');
+}
+
+async function testMailSend() {
+  const to = document.getElementById('testMailTo').value.trim();
+  // 先确保配置已保存
+  const cfg = buildConfig();
+  const res = await fetch(API + '/api/config', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfg)
+  });
+  const data = await res.json();
+  if (!data.success) { showToast('保存失败: ' + data.message, 'error'); return; }
+  // 再发测试邮件
+  const r2 = await fetch(API + '/api/test-mail', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ to })
+  });
+  const d2 = await r2.json();
+  showToast(d2.success ? '测试邮件已发送，请查收' : '发送失败: ' + d2.message, d2.success ? 'success' : 'error');
+}
+
+// ---- 监控控制 ----
+async function startMonitor() {
+  const res = await fetch(API + '/api/monitor/start', { method: 'POST' });
+  const data = await res.json();
+  if (data.success) {
+    showToast('监控已启动', 'success');
+    await refreshMonitorStatus();
+  } else {
+    showToast('启动失败', 'error');
+  }
+}
+
+async function stopMonitor() {
+  const res = await fetch(API + '/api/monitor/stop', { method: 'POST' });
+  await res.json();
+  showToast('监控已停止', 'info');
+  await refreshMonitorStatus();
+}
+
+async function scanMonitorNow() {
+  showToast('正在扫描...', 'info');
+  const res = await fetch(API + '/api/monitor/scan-now', { method: 'POST' });
+  const data = await res.json();
+  showToast(data.success ? `扫描完成，本次新增 ${data.newFiles} 个文件` : '扫描失败', data.success ? 'success' : 'error');
+  await refreshMonitorStatus();
+}
+
+async function refreshMonitorStatus() {
+  try {
+    const res = await fetch(API + '/api/monitor/status');
+    const s = await res.json();
+    const startBtn = document.getElementById('btnMonitorStart');
+    const stopBtn = document.getElementById('btnMonitorStop');
+    if (startBtn) startBtn.disabled = s.running;
+    if (stopBtn) stopBtn.disabled = !s.running;
+    const txt = document.getElementById('monitorStatusText');
+    if (txt) {
+      const runState = s.running ? '🟢 运行中' : '⚪ 已停止';
+      const last = s.lastRun ? ` · 上次扫描: ${s.lastRun}` : '';
+      txt.textContent = `${runState}${last} · 每 ${s.interval || 5} 分钟`;
+    }
+  } catch (_) {}
+}
+
+// ---- 监控目录列表 ----
+function renderMonitorList() {
+  const el = document.getElementById('monitorList');
+  if (!monitors || !monitors.length) {
+    el.innerHTML = '<div class="folder-empty">还没有配置监控目录，点击「添加」</div>';
+    return;
+  }
+  el.innerHTML = monitors.map((m, i) => `
+    <div class="folder-item ${m.enabled ? '' : 'disabled'}">
+      <input type="checkbox" ${m.enabled ? 'checked' : ''} onchange="toggleMonitor(${i})" title="启用/禁用" />
+      <div style="flex:1;min-width:0">
+        <div class="folder-path" style="font-size:12px">
+          <span style="color:var(--text2)">远程:</span> ${escHtml(m.remotePath || '')}
+        </div>
+        <div class="folder-pattern" style="margin-top:4px">
+          模式: <span style="color:var(--accent)">${escHtml(m.filePattern || '*')}</span>
+          <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:8px" onclick="clearMonitorSnapshot('${esc(m.id)}')">↺ 重置快照</button>
+        </div>
+      </div>
+      <div class="folder-actions">
+        <button class="btn btn-danger" style="padding:4px 9px;font-size:11px" onclick="removeMonitor(${i})">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addMonitor() {
+  const remotePath = document.getElementById('newMonitorPath').value.trim();
+  const filePattern = document.getElementById('newMonitorPattern').value.trim() || '*';
+  if (!remotePath) { showToast('请填写远程监控目录', 'warn'); return; }
+  const id = 'mon_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+  monitors.push({ id, remotePath, filePattern, enabled: true });
+  renderMonitorList();
+  toggleAddMonitor();
+  saveMonitorConfig();
+  showToast('已添加监控目录', 'success');
+}
+
+function removeMonitor(i) {
+  monitors.splice(i, 1);
+  renderMonitorList();
+  saveMonitorConfig();
+}
+
+function toggleMonitor(i) {
+  monitors[i].enabled = !monitors[i].enabled;
+  renderMonitorList();
+  saveMonitorConfig();
+}
+
+function saveMonitorConfig() {
+  const cfg = buildConfig();
+  fetch(API + '/api/config', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfg)
+  }).catch(() => {});
+}
+
+async function clearMonitorSnapshot(id) {
+  const res = await fetch(API + '/api/monitor/snapshot/' + encodeURIComponent(id), { method: 'DELETE' });
+  const data = await res.json();
+  showToast(data.success ? '已重置快照，下次扫描视为全部新增' : '重置失败', data.success ? 'info' : 'error');
+  await refreshMonitorStatus();
+}
+
+// ---- 监控目录选择（复用 FTP 浏览器） ----
+function openFtpBrowserForMonitor() {
+  ftpBrowserTarget = 'monitor';
+  document.getElementById('ftpBrowserMonitorCard').style.display = 'block';
+  loadFtpDir('/');
+}
+
+// ========== 归档报文对账 ==========
+
+function onOracleEnabledChange() {
+  // 仅切换状态，连接测试/保存由按钮触发
+}
+
+function onReconcileEnabledChange() {
+  // 仅切换状态
+}
+
+async function testOracle() {
+  const cfg = buildConfig();
+  const res = await fetch(API + '/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfg) });
+  const data = await res.json();
+  if (!data.success) { showToast('保存失败: ' + data.message, 'error'); return; }
+  const r2 = await fetch(API + '/api/oracle/test', { method: 'POST' });
+  const d2 = await r2.json();
+  showToast(d2.success ? 'Oracle 连接成功' : '连接失败: ' + d2.message, d2.success ? 'success' : 'error');
+}
+
+async function runReconcileNow() {
+  showToast('正在对账...', 'info');
+  const res = await fetch(API + '/api/reconcile/run', { method: 'POST' });
+  const d = await res.json();
+  if (d.success) {
+    const skipTxt = d.skipped ? `，跳过已验一致 ${d.skipped} 个文件` : '';
+    showToast(`对账完成：本次验证 ${d.scanned} 条，一致 ${d.matched}，不一致 ${d.mismatched}${skipTxt}${d.mismatched ? '（已自动重传）' : ''}`, d.mismatched ? 'warn' : 'success');
+    await renderReuploadList();
+  } else if (d.busy) {
+    showToast(d.message || '对账正在执行中', 'info');
+  } else {
+    showToast('对账失败: ' + (d.message || ''), 'error');
+  }
+  await refreshReconcileStatus();
+}
+
+async function clearReconcileCache() {
+  if (!confirm('清空后下次对账将重新核对所有文件（含已验证一致的），确定吗？')) return;
+  const res = await fetch(API + '/api/reconcile/clear-cache', { method: 'POST' });
+  const d = await res.json();
+  showToast(d.success ? (d.message || '已清空') : '清空失败', d.success ? 'success' : 'error');
+  await refreshReconcileStatus();
+}
+
+async function refreshReconcileStatus() {
+  try {
+    const res = await fetch(API + '/api/reconcile/status');
+    const s = await res.json();
+    const runBtn = document.getElementById('btnReconcileRun');
+    if (runBtn) runBtn.disabled = false;   // 始终可点，允许手动触发
+    const txt = document.getElementById('reconcileStatusText');
+    if (txt) {
+      const state = s.running ? '🟢 对账进行中' : (s.enabled ? '🔵 定时对账已开启' : '⚪ 定时对账未开启');
+      const last = s.lastRun ? ` · 上次: ${s.lastRun}` : '';
+      const oracle = s.oracleEnabled ? '' : ' · ⚠️ Oracle 未启用';
+      const skip = (s.skipped || 0) ? ` · 上次跳过 ${s.skipped} 个已验文件` : '';
+      const cache = s.verifiedCacheSize ? ` · 已验缓存 ${s.verifiedCacheSize} 个` : '';
+      txt.textContent = `${state} · 每 ${s.interval || 30} 分钟 · 扫描 ${s.windowDays || 7} 天${last}${skip}${cache}${oracle}`;
+    }
+  } catch (_) {}
+}
+
+async function renderReuploadList() {
+  const el = document.getElementById('reuploadList');
+  if (!el) return;
+  try {
+    const res = await fetch(API + '/api/reupload-records');
+    const d = await res.json();
+    const list = d.records || [];
+    if (!list.length) {
+      el.innerHTML = '<div class="folder-empty">暂无重传记录</div>';
+      return;
+    }
+    el.innerHTML = list.map(r => {
+      const t = r.reuploadedAt ? new Date(r.reuploadedAt).toLocaleString('zh-CN') : '';
+      const ok = r.result === 'success';
+      return `
+        <div class="folder-item ${ok ? '' : 'disabled'}">
+          <div style="flex:1;min-width:0">
+            <div class="folder-path" style="font-size:12px">📄 ${escHtml((r.localPath || '').split(/[\\/]/).pop())}</div>
+            <div class="folder-pattern" style="margin-top:4px">
+              目录: <span style="color:var(--accent)">${escHtml(r.subDir || '')}</span>
+              · 报文: ${escHtml(r.localStatus || '')} / 库: ${escHtml(r.dbStatus || '')}
+              · <span style="color:${ok ? 'var(--accent)' : '#e0533d'}">${ok ? '✓ 重传成功' : '✗ 失败'}</span>
+            </div>
+            <div class="folder-pattern" style="margin-top:2px;font-size:11px;color:var(--text2)">${t}${r.reason ? ' · ' + escHtml(r.reason) : ''}</div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (_) {
+    el.innerHTML = '<div class="folder-empty">加载失败</div>';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
