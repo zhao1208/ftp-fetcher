@@ -4,7 +4,6 @@
 
 **跨平台**：同一份代码可在 Windows 与 Linux 上运行。Windows 用 `start.bat` / `deploy.bat`，Linux 用 `start.sh` 或 systemd / pm2。
 
-> 本文档合并了原《业务需求说明书》《操作说明》《归档报文对账 + 自动重传 设计与任务清单》三份资料，一份说清：能做什么、怎么用、怎么部署、对账逻辑怎么定。
 
 ---
 
