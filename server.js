@@ -1262,7 +1262,8 @@ async function reuploadMismatch(item) {
       await client.cd(remoteSub);
       await retryWithBackoff(() => client.uploadFrom(item.localPath, fname));
     }
-    reuploadRecords[item.localPath] = {
+    const existing = reuploadRecords[item.localPath] || {};
+    reuploadRecords[item.localPath] = Object.assign({}, existing, {
       size: fs.statSync(item.localPath).size,
       reuploadedAt: Date.now(),
       subDir: item.subDir,
@@ -1270,7 +1271,7 @@ async function reuploadMismatch(item) {
       dbStatus: item.dbStatus,
       reason: item.reason,
       result: 'success'
-    };
+    });
     saveReuploadRecords();
     addLog('info', `[重传] ✓ ${fname} → ${remoteSub}`);
     return { success: true };
@@ -1395,11 +1396,26 @@ async function _doReconcile() {
   state.lastReconcileSkipped = skipped;
   addLog('info', `[对账] 完成：本次验证 ${scanned} 条，跳过已验一致 ${skipped} 个文件，一致 ${matched}，不一致 ${mismatched}`);
 
+  // 无论是否自动重传，都先更新"最后检查时间"，让记录时间戳保持新鲜
+  const reuploadSeen = new Set();
+  for (const m of mismatches) {
+    if (reuploadSeen.has(m.localPath)) continue;
+    reuploadSeen.add(m.localPath);
+    const existing = reuploadRecords[m.localPath] || {};
+    reuploadRecords[m.localPath] = Object.assign({}, existing, {
+      lastCheckedAt: Date.now(),
+      subDir: m.subDir,
+      localStatus: m.localStatus,
+      dbStatus: m.dbStatus,
+      reason: m.reason,
+      // result / reuploadedAt 不动，等实际重传时再更新
+    });
+  }
+  saveReuploadRecords();
+
   if (config.reconcile.autoReupload) {
-    const seen = new Set();
     for (const m of mismatches) {
-      if (seen.has(m.localPath)) continue;   // 同一文件只重传一次（即使多行不一致）
-      seen.add(m.localPath);
+      if (!reuploadSeen.has(m.localPath)) continue;   // 同一文件只重传一次（即使多行不一致）
       await reuploadMismatch(m);
     }
   }
